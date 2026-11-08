@@ -1,0 +1,207 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------- base --------------------------------- */
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-luma-ink text-slate-100 antialiased;
+    background-image:
+      radial-gradient(110% 75% at 8% -8%, rgba(139, 92, 246, 0.28) 0%, transparent 55%),
+      radial-gradient(90% 65% at 100% 0%, rgba(99, 102, 241, 0.2) 0%, transparent 58%),
+      radial-gradient(120% 90% at 50% 115%, rgba(124, 58, 237, 0.18) 0%, transparent 62%);
+    background-attachment: fixed;
+    overscroll-behavior-y: none;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  ::selection {
+    background: rgba(139, 92, 246, 0.4);
+  }
+
+  /* Slim, premium scrollbars */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(148, 130, 200, 0.24);
+    border-radius: 99px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(167, 139, 250, 0.42);
+  }
+
+  input,
+  textarea,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  input:focus,
+  textarea:focus,
+  button:focus {
+    outline: none;
+  }
+
+  /* iOS safe areas / Capacitor status bar */
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* -------------------------------- components ----------------------------- */
+@layer components {
+  .glass {
+    @apply border border-white/10 bg-white/[0.055] shadow-glass backdrop-blur-2xl;
+  }
+
+  .glass-strong {
+    @apply border border-white/[0.14] bg-white/[0.09] shadow-glass backdrop-blur-2xl;
+  }
+
+  .glass-panel {
+    @apply relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.055] shadow-glass backdrop-blur-2xl;
+  }
+
+  /* Soft top sheen on glass surfaces */
+  .glass-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      140deg,
+      rgba(255, 255, 255, 0.13) 0%,
+      rgba(255, 255, 255, 0.02) 38%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    pointer-events: none;
+  }
+
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition-all duration-200 active:scale-[0.975] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-luma-gradient text-white shadow-bubble hover:brightness-110;
+    background-size: 160% 160%;
+  }
+
+  .btn-ghost {
+    @apply btn border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10;
+  }
+
+  .btn-icon {
+    @apply grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition-all hover:bg-white/10 active:scale-95;
+  }
+
+  .field {
+    @apply w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-slate-100 placeholder-slate-500 transition-all focus:border-luma-400/70 focus:bg-white/[0.09] focus:ring-4 focus:ring-luma-500/15;
+  }
+
+  .label {
+    @apply mb-1.5 block text-[13px] font-medium text-slate-400;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.07] px-2.5 py-1 text-[11px] font-medium text-slate-300;
+  }
+
+  .divider {
+    @apply h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* ------------------------------- animations ------------------------------ */
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-luma-200 via-luma-300 to-indigo-200 bg-clip-text text-transparent;
+  }
+
+  .grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  }
+
+  .animate-in-up {
+    animation: fadeUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* typing dots */
+  .dot {
+    @apply inline-block h-1.5 w-1.5 rounded-full bg-current;
+    animation: dotBounce 1.35s infinite ease-in-out both;
+  }
+  .dot:nth-child(2) {
+    animation-delay: 0.16s;
+  }
+  .dot:nth-child(3) {
+    animation-delay: 0.32s;
+  }
+
+  @keyframes dotBounce {
+    0%,
+    80%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.45;
+    }
+    40% {
+      transform: translateY(-4px);
+      opacity: 1;
+    }
+  }
+}
+
+/* Native-app feel: kill text selection on chrome, allow inside bubbles */
+.select-none-app,
+button,
+nav,
+header {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.message-text {
+  -webkit-user-select: text;
+  user-select: text;
+}
