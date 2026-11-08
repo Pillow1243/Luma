@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Luma</string>
+    <string name="title_activity_main">Luma</string>
+
+    <color name="luma_ink">#FF0B0716</color>
+    <color name="luma_violet">#FF8B5CF6</color>
+
+    <!-- Framework-only theme: no AppCompat/AAR dependencies, so the APK can be
+         assembled with the Android SDK build tools alone (also what CI uses). -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash</item>
+        <item name="android:colorPrimary">@color/luma_violet</item>
+        <item name="android:colorPrimaryDark">@color/luma_ink</item>
+        <item name="android:colorAccent">@color/luma_violet</item>
+        <item name="android:statusBarColor">@color/luma_ink</item>
+        <item name="android:navigationBarColor">@color/luma_ink</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+</resources>

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Luma — Light up your conversations</title>
+    <meta
+      name="description"
+      content="Luma is a premium realtime messenger with a glassmorphic dark UI, instant delivery, reactions and rich media."
+    />
+    <meta name="theme-color" content="#0b0716" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Luma" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="icon" type="image/png" href="/icons/favicon-64.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link
+      rel="preconnect"
+      href="https://fonts.googleapis.com"
+    />
+    <style>
+      :root { color-scheme: dark; }
+      html, body, #root { height: 100%; margin: 0; background: #0b0716; }
+      #splash {
+        position: fixed; inset: 0; display: grid; place-items: center;
+        background: radial-gradient(120% 90% at 50% 0%, #241543 0%, #0b0716 62%);
+        z-index: 9999; transition: opacity .45s ease, visibility .45s ease;
+      }
+      #splash.hide { opacity: 0; visibility: hidden; }
+      #splash img { width: 96px; height: 96px; border-radius: 26px; box-shadow: 0 30px 80px -20px rgba(139,92,246,.75); animation: splashIn .9s cubic-bezier(.2,.8,.2,1) both; }
+      @keyframes splashIn { from { opacity: 0; transform: scale(.86) translateY(10px); } to { opacity: 1; transform: none; } }
+    </style>
+  </head>
+  <body>
+    <div id="splash"><img src="/icons/icon-192.png" alt="Luma" /></div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
