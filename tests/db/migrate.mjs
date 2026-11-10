@@ -237,10 +237,15 @@ functions as (
   from pg_proc p
   join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public'
-    and p.proname not in ('citext','citextin','citextout','citextrecv','citextsend','citext_cmp','citext_eq',
-      'citext_ne','citext_lt','citext_le','citext_gt','citext_ge','citext_hash','citext_hash_extended',
-      'citext_larger','citext_smaller','citext_pattern_cmp','citext_pattern_lt','citext_pattern_le',
-      'citext_pattern_gt','citext_pattern_ge')
+    -- Extension-owned functions (citext, pg_trgm, ...) live in public on some
+    -- servers and in extension schemas on others. Excluding them by ownership
+    -- instead of by name makes the comparison independent of that layout.
+    and not exists (
+      select 1 from pg_depend d
+      where d.classid = 'pg_proc'::regclass
+        and d.objid = p.oid
+        and d.deptype = 'e'
+    )
   group by 1
 ),
 indexes as (

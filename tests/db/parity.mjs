@@ -110,6 +110,11 @@ async function snapshot(db) {
                 ${FP_SQL} as fp
          from pg_proc p join pg_namespace n on n.oid = p.pronamespace
          where n.nspname = 'public' and p.prokind = 'f'
+           -- skip functions owned by an extension (citext, pg_trgm, ...):
+           -- where those live depends on the server, not on this repository
+           and not exists (select 1 from pg_depend d
+                           where d.classid = 'pg_proc'::regclass
+                             and d.objid = p.oid and d.deptype = 'e')
          order by 1`
       )
     ).rows.map((r) => [r.id, r.fp])
