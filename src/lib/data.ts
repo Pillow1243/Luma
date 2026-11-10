@@ -36,13 +36,27 @@ export async function fetchProfiles(ids: string[]): Promise<Profile[]> {
 
 export async function searchProfiles(term: string, excludeId: string): Promise<Profile[]> {
   const clean = term.trim().replace(/^@/, "");
-  let query = supabase.from("profiles").select("*").neq("id", excludeId).limit(24);
-  if (clean) {
-    query = query.or(`display_name.ilike.%${clean}%,username.ilike.%${clean}%`);
-  }
-  const { data, error } = await query;
+  const { data, error } = await supabase.rpc("search_users", { term: clean });
   if (error) throw error;
-  return (data ?? []) as Profile[];
+  return ((data ?? []) as Array<{
+    id: string;
+    display_name: string;
+    username: string | null;
+    avatar_path: string | null;
+    bio: string;
+  }>)
+    .filter((p) => p.id !== excludeId)
+    .map((p) => ({
+      id: p.id,
+      display_name: p.display_name,
+      username: p.username ?? null,
+      avatar_path: p.avatar_path ?? null,
+      bio: p.bio ?? "",
+      show_last_seen: true,
+      last_seen_at: null,
+      created_at: "",
+      public_key: null,
+    }));
 }
 
 export async function searchProfilesInChat(
@@ -71,9 +85,13 @@ export async function updateProfile(
   id: string,
   patch: Partial<Pick<Profile, "display_name" | "avatar_path" | "username" | "bio" | "show_last_seen">>
 ): Promise<Profile> {
+  const payload =
+    patch.show_last_seen === false
+      ? { ...patch, last_seen_at: null }
+      : patch;
   const { data, error } = await supabase
     .from("profiles")
-    .update(patch)
+    .update(payload)
     .eq("id", id)
     .select("*")
     .single();
@@ -98,6 +116,8 @@ export async function avatarUrl(path: string | null | undefined): Promise<string
 }
 
 export async function uploadAvatar(userId: string, file: File): Promise<string> {
+  const err = validateAvatarUpload(file);
+  if (err) throw new Error(err);
   const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "");
   const path = `${userId}/avatar-${Date.now()}.${ext}`;
   const { error } = await supabase.storage.from(BUCKET_AVATARS).upload(path, file, {
@@ -116,6 +136,8 @@ export async function chatAvatarUrl(path: string | null | undefined): Promise<st
 }
 
 export async function uploadChatAvatar(chatId: string, userId: string, file: File): Promise<string> {
+  const err = validateAvatarUpload(file);
+  if (err) throw new Error(err);
   const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "");
   const path = `${chatId}/${userId}/avatar-${Date.now()}.${ext}`;
   const { error } = await supabase.storage.from(BUCKET_MEDIA).upload(path, file, {
@@ -165,13 +187,40 @@ const ALLOWED_MIME = new Set([
   "image/", "video/", "audio/", "application/pdf", "application/zip",
   "application/msword", "application/vnd.openxmlformats-officedocument",
   "application/vnd.ms-excel", "application/vnd.ms-powerpoint",
-  "text/plain", "text/csv", "application/json",
+  "text/plain", "text/csv", "application/json", "application/octet-stream",
 ]);
 
-/** Cheap client-side sanity gate — the storage bucket is the enforcing boundary. */
-export function validateUpload(file: File, maxBytes = 20 * 1024 * 1024): string | null {
+const BLOCKED_MIME = new Set([
+  "image/svg+xml",
+  "text/html",
+  "application/xhtml+xml",
+  "application/javascript",
+  "text/javascript",
+]);
+
+const BLOCKED_EXT = /\.(svg|svgz|html?|xhtml|m?js|exe|bat|cmd|sh|php|jsp)$/i;
+
+export function validateAvatarUpload(file: File, maxBytes = 5 * 1024 * 1024): string | null {
+  if (file.size <= 0) return `${file.name} is empty`;
   if (file.size > maxBytes) return `${file.name} is larger than ${Math.round(maxBytes / 1024 / 1024)} MB`;
-  const ok = [...ALLOWED_MIME].some((p) => file.type.startsWith(p)) || file.type === "";
+  if (BLOCKED_EXT.test(file.name) || BLOCKED_MIME.has(file.type.toLowerCase())) {
+    return `${file.name}: SVG and active files are not allowed for avatars`;
+  }
+  if (!["image/png", "image/jpeg", "image/webp", "image/gif", "image/avif"].includes(file.type.toLowerCase())) {
+    return `${file.name}: use PNG, JPG, WebP, GIF, or AVIF`;
+  }
+  return null;
+}
+
+/** Client-side sanity gate — reinforced by storage RLS & database triggers. */
+export function validateUpload(file: File, maxBytes = 20 * 1024 * 1024): string | null {
+  if (file.size <= 0) return `${file.name} is empty`;
+  if (file.size > maxBytes) return `${file.name} is larger than ${Math.round(maxBytes / 1024 / 1024)} MB`;
+  const mime = file.type.toLowerCase();
+  if (BLOCKED_MIME.has(mime) || BLOCKED_EXT.test(file.name)) {
+    return `${file.name}: active scripts, HTML, and SVG uploads are blocked`;
+  }
+  const ok = [...ALLOWED_MIME].some((p) => mime.startsWith(p)) || mime === "";
   if (!ok) return `${file.name}: that file type is not allowed`;
   return null;
 }
@@ -226,7 +275,13 @@ export async function createChannel(input: {
 
 export async function updateChannel(
   chatId: string,
-  patch: { name?: string; description?: string; username?: string; isPublic?: boolean }
+  patch: {
+    name?: string;
+    description?: string;
+    username?: string;
+    isPublic?: boolean;
+    avatarPath?: string;
+  }
 ): Promise<void> {
   const { error } = await supabase.rpc("update_channel", {
     cid: chatId,
@@ -234,6 +289,7 @@ export async function updateChannel(
     new_description: patch.description ?? null,
     new_username: patch.username ?? null,
     new_public: patch.isPublic ?? null,
+    new_avatar_path: patch.avatarPath ?? null,
   });
   if (error) throw error;
 }
@@ -357,7 +413,9 @@ export async function redeemInvite(token: string): Promise<string> {
 /* ---------------------------- block / report ----------------------------- */
 
 export async function blockUser(blocker: string, blocked: string): Promise<void> {
-  const { error } = await supabase.from("blocks").upsert({ blocker, blocked }, { onConflict: "blocker,blocked" });
+  const { error } = await supabase
+    .from("blocks")
+    .upsert({ blocker, blocked }, { onConflict: "blocker,blocked", ignoreDuplicates: true });
   if (error) throw error;
 }
 
@@ -412,7 +470,7 @@ export const archiveChat = (chatId: string, userId: string, archived: boolean) =
 export async function starMessage(userId: string, messageId: string): Promise<void> {
   const { error } = await supabase
     .from("starred_messages")
-    .upsert({ user_id: userId, message_id: messageId }, { onConflict: "user_id,message_id" });
+    .upsert({ user_id: userId, message_id: messageId }, { onConflict: "user_id,message_id", ignoreDuplicates: true });
   if (error) throw error;
 }
 
@@ -458,40 +516,31 @@ export async function loadChats(userId: string): Promise<ChatSummary[]> {
   const chatIds = myChats.map((m) => m.chat_id);
   const membershipMap = new Map(myChats.map((m) => [m.chat_id, m]));
 
-  const [{ data: chats, error: cErr }, { data: parts, error: pErr }] = await Promise.all([
-    supabase.from("chats").select("*").in("id", chatIds),
-    supabase.from("chat_participants").select("*").in("chat_id", chatIds),
-  ]);
+  const [{ data: chats, error: cErr }, { data: parts, error: pErr }, { data: metaRows, error: metaErr }] =
+    await Promise.all([
+      supabase.from("chats").select("*").in("id", chatIds),
+      supabase.from("chat_participants").select("*").in("chat_id", chatIds),
+      supabase.rpc("get_chat_sidebar_meta", { cids: chatIds }),
+    ]);
   if (cErr) throw cErr;
   if (pErr) throw pErr;
+  if (metaErr) throw metaErr;
 
   const participantRows = (parts ?? []) as ChatParticipant[];
   const profileIds = Array.from(new Set(participantRows.map((p) => p.user_id)));
   const profiles = await fetchProfiles(profileIds);
   const profileMap = new Map(profiles.map((p) => [p.id, p]));
 
-  // Latest message per chat — one bounded query, split client-side.
-  const { data: msgs, error: msgErr } = await supabase
-    .from("messages")
-    .select("*")
-    .in("chat_id", chatIds)
-    .order("created_at", { ascending: false })
-    .limit(Math.min(600, Math.max(150, chatIds.length * 30)));
-  if (msgErr) throw msgErr;
-  const messages = (msgs ?? []) as Message[];
-
-  const byChat = new Map<string, Message[]>();
-  for (const m of messages) {
-    const arr = byChat.get(m.chat_id);
-    if (arr) arr.push(m);
-    else byChat.set(m.chat_id, [m]);
-  }
+  const metaMap = new Map(
+    ((metaRows ?? []) as Array<{ chat_id: string; last_message: Message | null; unread_count: number }>).map(
+      (row) => [row.chat_id, row]
+    )
+  );
 
   const now = Date.now();
   const summaries: ChatSummary[] = (chats ?? []).map((chat: Chat) => {
-    const chatMsgs = byChat.get(chat.id) ?? [];
     const me = membershipMap.get(chat.id);
-    const lastRead = new Date(me?.last_read_at ?? 0).getTime();
+    const meta = metaMap.get(chat.id);
     const members = participantRows
       .filter((p) => p.chat_id === chat.id)
       .map((p) => profileMap.get(p.user_id))
@@ -509,10 +558,8 @@ export async function loadChats(userId: string): Promise<ChatSummary[]> {
     return {
       chat,
       participants: members,
-      lastMessage: chatMsgs[0] ?? null,
-      unreadCount: chatMsgs.filter(
-        (m) => m.sender_id !== userId && new Date(m.created_at).getTime() > lastRead
-      ).length,
+      lastMessage: meta?.last_message ?? null,
+      unreadCount: meta?.unread_count ?? 0,
       typing,
       mutedUntil: me?.muted_until ?? null,
       archivedAt: me?.archived_at ?? null,
@@ -663,9 +710,12 @@ export async function editMessage(id: string, newBody: string): Promise<Message>
   return data as Message;
 }
 
-export async function deleteMessageForEveryone(id: string): Promise<void> {
+export async function deleteMessageForEveryone(id: string, mediaPath?: string | null): Promise<void> {
   const { error } = await supabase.rpc("delete_message_for_everyone", { msg_id: id });
   if (error) throw error;
+  if (mediaPath) {
+    await supabase.storage.from(BUCKET_MEDIA).remove([mediaPath]).catch(() => {});
+  }
 }
 
 export async function deleteMessageForMe(id: string): Promise<void> {
@@ -821,4 +871,106 @@ export function chatAvatarProfile(
 ): Profile | null {
   if (summary.chat.is_group || summary.chat.kind === "channel" || summary.chat.kind === "saved") return null;
   return summary.participants.find((p) => p.id !== meId) ?? null;
+}
+
+/* --------------------- web push / account / diagnostics ------------------ */
+
+export async function triggerPushNotification(
+  chatId: string,
+  title: string,
+  preview: string
+): Promise<void> {
+  try {
+    await supabase.functions.invoke("send-push", {
+      body: { chatId, title, preview },
+    });
+  } catch {
+    // Best-effort — never block message delivery
+  }
+}
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+export async function registerWebPush(_userId: string): Promise<{ enabled: boolean; reason?: string }> {
+  if (typeof window === "undefined" || !("Notification" in window)) {
+    return { enabled: false, reason: "Browser notifications unsupported" };
+  }
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") {
+    return { enabled: false, reason: "Notification permission denied" };
+  }
+
+  const vapidPublic = import.meta.env?.VITE_VAPID_PUBLIC_KEY as string | undefined;
+  if (!vapidPublic || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+    return { enabled: true, reason: "Local desktop notifications enabled (VAPID Web Push unconfigured)" };
+  }
+
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublic) as BufferSource,
+    });
+  }
+  const json = sub.toJSON();
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
+    return { enabled: false, reason: "Push subscription missing keys" };
+  }
+
+  const { error } = await supabase.rpc("register_push_subscription", {
+    p_endpoint: json.endpoint,
+    p_p256dh: json.keys.p256dh,
+    p_auth: json.keys.auth,
+  });
+  if (error) throw error;
+  return { enabled: true };
+}
+
+export async function unregisterWebPush(userId: string): Promise<void> {
+  if ("serviceWorker" in navigator) {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager?.getSubscription();
+    if (sub) {
+      await supabase
+        .from("push_subscriptions")
+        .delete()
+        .eq("user_id", userId)
+        .eq("endpoint", sub.endpoint);
+      await sub.unsubscribe().catch(() => {});
+    }
+  }
+}
+
+export async function deleteMyAccount(password: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke<{ ok?: boolean; error?: string }>(
+    "account-delete",
+    {
+      body: { password, confirmation: "DELETE" },
+    }
+  );
+  if (error) throw error;
+  if (data && data.error) throw new Error(data.error);
+}
+
+export async function fetchSystemHealth(): Promise<{
+  ok: boolean;
+  db: string;
+  latencyMs: number;
+  timestamp: string;
+} | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke("health");
+    if (error) return null;
+    return data as { ok: boolean; db: string; latencyMs: number; timestamp: string };
+  } catch {
+    return null;
+  }
 }

@@ -309,12 +309,44 @@ async function main() {
   await A.client.storage.from("avatars").remove([avA]);
   await A.client.storage.from("chat_media").remove([mediaPath]);
 
-  /* ---------------- profile privacy ---------------- */
+  /* ---------------- profile privacy & search_users ---------------- */
+  const { data: anonProfs, error: anonProfErr } = await mk().from("profiles").select("id");
+  check("anon cannot read profiles", deny(anonProfErr) || (anonProfs?.length ?? 0) === 0);
+
   const { data: aProfile } = await C.client.from("profiles").select("display_name").eq("id", A.id);
-  check("C can read A's public profile fields", (aProfile?.length ?? 0) === 1);
+  check("C (shared DM) can read A's public profile fields", (aProfile?.length ?? 0) === 1);
   const { error: profUpdErr } = await C.client.from("profiles").update({ display_name: "pwned" }).eq("id", A.id);
   const { data: aName } = await A.client.from("profiles").select("display_name").eq("id", A.id).single();
   check("C cannot rewrite A's profile", aName?.display_name !== "pwned", profUpdErr?.message ?? "update applied");
+
+  await A.client.from("profiles").update({ last_seen_at: new Date().toISOString(), show_last_seen: false }).eq("id", A.id);
+  const { data: aPrivacy } = await A.client.from("profiles").select("last_seen_at,show_last_seen").eq("id", A.id).single();
+  check("show_last_seen=false clears last_seen_at", aPrivacy?.show_last_seen === false && aPrivacy?.last_seen_at === null);
+
+  const { data: searchHits, error: searchErr } = await B.client.rpc("search_users", { q: "RLS Alice" });
+  check("search_users finds RLS Alice", ok(searchErr) && (searchHits?.length ?? 0) >= 1, searchErr?.message);
+
+  /* ---------------- X3DH prekeys, sidebar meta & SVG guard ---------------- */
+  const { data: opkCount, error: pubBundleErr } = await A.client.rpc("publish_prekey_bundle", {
+    p_identity_key: "IK_RLS_ALICE_DUMMY_LONG_PUBLIC_KEY_B64",
+    p_signing_key: "SK_RLS_ALICE_DUMMY_LONG_PUBLIC_KEY_B64",
+    p_signed_prekey_id: 1,
+    p_signed_prekey: "SPK_RLS_ALICE_DUMMY_LONG_PUBLIC_KEY_B64",
+    p_signed_prekey_sig: "SIG_RLS_ALICE_DUMMY_LONG_SIGNATURE_B64",
+    p_one_time_keys: [{ key_id: 1, public_key: "OPK_RLS_1_PUB" }],
+  });
+  check("A publishes X3DH prekey bundle", ok(pubBundleErr) && opkCount === 1, pubBundleErr?.message);
+
+  const { data: claimed, error: claimErr } = await B.client.rpc("claim_prekey_bundle", { target_user: A.id });
+  check("B claims A's prekey bundle with OPK", ok(claimErr) && claimed?.one_time_key === "OPK_RLS_1_PUB", claimErr?.message);
+
+  const { data: sidebarRows, error: sidebarErr } = await B.client.rpc("get_chat_sidebar_meta", { p_chat_ids: [direct] });
+  check("B fetches chat sidebar summary", ok(sidebarErr) && (sidebarRows?.length ?? 0) === 1, sidebarErr?.message);
+
+  const { error: svgErr } = await A.client
+    .from("messages")
+    .insert({ chat_id: direct, sender_id: A.id, media_path: `${direct}/${A.id}/x.svg`, media_type: "image/svg+xml" });
+  check("messages_guardian blocks SVG uploads", deny(svgErr), "svg insert succeeded");
 
   console.log(`\n${results.length} checks · ${failures} failed`);
   process.exit(failures ? 1 : 0);

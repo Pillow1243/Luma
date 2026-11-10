@@ -11,6 +11,7 @@ import { supabase } from "../lib/supabase";
 import { shortStamp } from "../lib/format";
 import type { LumaNotification } from "../lib/types";
 import { useAuth } from "../context/AuthContext";
+import { useI18n } from "../lib/i18n";
 
 const ICONS: Record<LumaNotification["kind"], typeof AtSign> = {
   mention: AtSign,
@@ -21,6 +22,8 @@ const ICONS: Record<LumaNotification["kind"], typeof AtSign> = {
 
 export function NotificationsBell() {
   const { user } = useAuth();
+  const { lang } = useI18n();
+  const tr = (en: string, fa: string) => (lang === "fa" ? fa : en);
   const navigate = useNavigate();
   const meId = user?.id ?? "";
   const [open, setOpen] = useState(false);
@@ -54,7 +57,6 @@ export function NotificationsBell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meId]);
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -75,11 +77,11 @@ export function NotificationsBell() {
       <button
         onClick={() => setOpen((v) => !v)}
         className="btn-icon h-10 w-10"
-        aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
+        aria-label={unread ? tr(`Notifications, ${unread} unread`, `اعلان‌ها، ${unread} خوانده‌نشده`) : tr("Notifications", "اعلان‌ها")}
       >
         <Bell className="h-[18px] w-[18px]" />
         {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full border-2 border-luma-ink bg-luma-gradient px-1 text-[9.5px] font-bold text-white">
+          <span className="absolute -end-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full border-2 border-luma-ink bg-luma-gradient px-1 text-[9.5px] font-bold text-white">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -91,17 +93,17 @@ export function NotificationsBell() {
             initial={{ opacity: 0, y: -6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
-            className="glass-panel absolute right-0 z-40 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl"
+            className="glass-panel absolute end-0 z-40 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl"
           >
             <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-2.5">
               <span className="text-[12px] font-semibold uppercase tracking-wider text-slate-400">
-                Notifications
+                {tr("Notifications", "اعلان‌ها")}
               </span>
               <button
                 onClick={markAll}
                 className="flex items-center gap-1.5 text-[11px] text-luma-300 hover:text-luma-200"
               >
-                <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+                <CheckCheck className="h-3.5 w-3.5" /> {tr("Mark all read", "خواندن همه")}
               </button>
             </div>
             <div className="max-h-[60vh] overflow-y-auto py-1 no-scrollbar">
@@ -109,7 +111,10 @@ export function NotificationsBell() {
                 <div className="px-4 py-8 text-center">
                   <Info className="mx-auto h-5 w-5 text-slate-600" />
                   <p className="mt-2 text-[12.5px] text-slate-500">
-                    Nothing yet — mentions and approvals will show up here.
+                    {tr(
+                      "Nothing yet — mentions and approvals will show up here.",
+                      "فعلاً خبری نیست — اشاره‌ها و تأیید عضویت‌ها اینجا نمایش داده می‌شوند."
+                    )}
                   </p>
                 </div>
               ) : (
@@ -123,7 +128,7 @@ export function NotificationsBell() {
                         setOpen(false);
                         if (n.chat_id) navigate(`/chat/${n.chat_id}`);
                       }}
-                      className={`flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.06] ${
+                      className={`flex w-full items-start gap-3 px-4 py-2.5 text-start transition-colors hover:bg-white/[0.06] ${
                         isUnread ? "bg-luma-500/[0.07]" : ""
                       }`}
                     >

@@ -24,6 +24,8 @@ export default {
         sans: [
           "Inter Variable",
           "Inter",
+          "Vazirmatn Variable",
+          "Vazirmatn",
           "-apple-system",
           "BlinkMacSystemFont",
           "Segoe UI",

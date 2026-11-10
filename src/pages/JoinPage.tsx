@@ -7,12 +7,15 @@ import { LumaMark } from "../components/LumaMark";
 import { redeemInvite } from "../lib/data";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
+import { useI18n } from "../lib/i18n";
 
 export default function JoinPage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
+  const { lang } = useI18n();
+  const tr = (en: string, fa: string) => (lang === "fa" ? fa : en);
   const [state, setState] = useState<"working" | "error">("working");
   const [error, setError] = useState("");
 
@@ -20,13 +23,13 @@ export default function JoinPage() {
     let alive = true;
     if (!token) {
       setState("error");
-      setError("This invite link is missing its token.");
+      setError(tr("This invite link is missing its token.", "این پیوند دعوت توکن ندارد."));
       return;
     }
     redeemInvite(token)
       .then((chatId) => {
         if (!alive) return;
-        toast.push("You're in! Opening the conversation…", "success");
+        toast.push(tr("You're in! Opening the conversation…", "عضو شدید! در حال باز کردن گفتگو…"), "success");
         navigate(`/chat/${chatId}`, { replace: true });
       })
       .catch((err) => {
@@ -35,7 +38,10 @@ export default function JoinPage() {
         setError(
           err instanceof Error && err.message
             ? err.message
-            : "This invite is invalid, expired, or already fully used."
+            : tr(
+                "This invite is invalid, expired, or already fully used.",
+                "این لینک دعوت نامعتبر یا منقضی است یا ظرفیت آن تکمیل شده است."
+              )
         );
       });
     return () => {
@@ -55,18 +61,24 @@ export default function JoinPage() {
         <LumaMark size={64} className="mx-auto drop-shadow-[0_12px_36px_rgba(139,92,246,0.55)]" />
         {state === "working" ? (
           <>
-            <h1 className="mt-5 text-[17px] font-semibold text-white">Joining conversation…</h1>
-            <p className="mt-1.5 text-[13px] text-slate-400">Validating your invite link.</p>
+            <h1 className="mt-5 text-[17px] font-semibold text-white">
+              {tr("Joining conversation…", "در حال پیوستن به گفتگو…")}
+            </h1>
+            <p className="mt-1.5 text-[13px] text-slate-400">
+              {tr("Validating your invite link.", "در حال بررسی لینک دعوت.")}
+            </p>
             <Loader2 className="mx-auto mt-4 h-6 w-6 animate-spin text-luma-300" />
           </>
         ) : (
           <>
             <ShieldAlert className="mx-auto mt-5 h-9 w-9 text-rose-300" />
-            <h1 className="mt-4 text-[17px] font-semibold text-white">Can’t join</h1>
+            <h1 className="mt-4 text-[17px] font-semibold text-white">
+              {tr("Can’t join", "عضویت انجام نشد")}
+            </h1>
             <p className="mt-1.5 text-[13px] leading-relaxed text-slate-400">{error}</p>
             <button onClick={() => navigate("/")} className="btn-primary mt-5 w-full">
               <CheckCircle2 className="h-4 w-4" />
-              Back to Luma
+              {tr("Back to Luma", "بازگشت به لوما")}
             </button>
           </>
         )}

@@ -45,6 +45,7 @@ import {
   updateChannel,
   updateGroup,
   uploadChatAvatar,
+  validateAvatarUpload,
 } from "../lib/data";
 import type { ChatParticipant, ChatSummary, Invite, JoinRequest, Profile } from "../lib/types";
 import { useToast } from "../context/ToastContext";
@@ -201,18 +202,16 @@ export function ChatInfoModal({
   async function pickAvatar(files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.push("Choose an image", "error");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.push("Avatars must be under 5 MB", "error");
+    const problem = validateAvatarUpload(file);
+    if (problem) {
+      toast.push(problem, "error");
       return;
     }
     setAvatarBusy(true);
     try {
       const path = await uploadChatAvatar(chat.id, meId, file);
-      await updateGroup(chat.id, undefined, path);
+      if (isChannel) await updateChannel(chat.id, { avatarPath: path });
+      else await updateGroup(chat.id, undefined, path);
       toast.push("Avatar updated", "success");
     } catch (err) {
       toast.push(err instanceof Error ? err.message : "Upload failed", "error");

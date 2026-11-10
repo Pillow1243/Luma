@@ -19,15 +19,22 @@ and a native Android app.
 
 ## Features
 
+- **Ratcheted secret mode** — opt-in per direct chat using X3DH-style prekey
+  bundles + Double Ratchet (`luma:e2ee:v2:`) with AES-256-GCM encrypted text,
+  voice notes, and attachments, 60-digit safety numbers + fingerprint emojis, and
+  peer key-change alerts; read [the architecture & limitations](docs/UPGRADE.md).
 - **Audio/video calls** for direct chats and small groups (up to six) using
-  WebRTC and membership-scoped Supabase Realtime signaling. A configured TURN
-  account is needed for dependable connections across restrictive networks.
+  WebRTC with authenticated `turn-credentials` Edge Function support and
+  membership-scoped Supabase Realtime signaling.
+- **English & Persian (RTL)** — switchable UI with bundled Inter + Vazirmatn
+  fonts, Jalali/Persian date formatting, and logical RTL layout.
 - **Offline history and outbox** — recent visited conversations remain
   readable; queued text messages survive reload and retry when connected.
-- **Experimental secret text** — opt-in, device-bound encrypted direct text
-  with a 24-hour expiry and a security code. This is not an audited or
-  forward-secret protocol; read [the security limitations](docs/UPGRADE.md).
-- **Polls, stickers and optional GIPHY**, plus swipe gestures and celebrations.
+- **Voice waveforms, polls, stickers & GIPHY** — live audio level recorder with
+  interactive seekable playback waveforms, swipe gestures, and celebrations.
+- **Full account lifecycle** — password recovery, global sign-out, verified
+  self-service account deletion (`account-delete` Edge Function), Web Push
+  (`send-push` Edge Function), and diagnostics (`health`).
 - **Realtime messaging** over Supabase Realtime — new messages, edits, deletions
   and reactions stream into every open chat with no polling.
 - **Optimistic send** — bubbles appear instantly with a spinner, then reconcile
@@ -78,6 +85,7 @@ scripts/
   make-keystore.py    release signing key
 supabase/
   schema.sql                reference dump (not applied directly)
+  functions/                Edge Functions (health, account-delete, turn-credentials, send-push)
   migrations/               source of truth — apply in order
     20261109000000_luma_v3_1_schema.sql
     20261109000000_luma_v3_2_rls_and_triggers.sql
@@ -86,6 +94,12 @@ supabase/
     20261109000005_luma_v3_cron.sql
     20261109000006_luma_v3_rpc_fixes.sql
     20261110064153_luma_calls_secret_polls.sql
+    20261110120000_luma_security_and_ratchet.sql
+    20261110130000_fix_publish_prekey_bundle.sql
+    20261110140000_fix_grants_and_push_upsert.sql
+    20261110141000_fix_messages_guardian_uuid.sql
+    20261110142000_fix_messages_constraints.sql
+    20261110143000_fix_handle_profile_delete_join_profiles.sql
 tests/
   rls-tests.mjs             live authorization suite (manual run)
 ```

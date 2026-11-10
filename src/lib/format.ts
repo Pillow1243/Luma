@@ -4,18 +4,33 @@ export function timeOfDay(iso: string): string {
   return format(new Date(iso), "HH:mm");
 }
 
-export function relativeDay(iso: string): string {
+export function relativeDay(iso: string, lang: "en" | "fa" = "en"): string {
   const d = new Date(iso);
-  if (isToday(d)) return "Today";
-  if (isYesterday(d)) return "Yesterday";
+  if (isToday(d)) return lang === "fa" ? "امروز" : "Today";
+  if (isYesterday(d)) return lang === "fa" ? "دیروز" : "Yesterday";
+  if (lang === "fa") {
+    return new Intl.DateTimeFormat("fa-IR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }).format(d);
+  }
   return format(d, "EEEE, d MMMM");
 }
 
-export function shortStamp(iso: string): string {
+export function shortStamp(iso: string, lang: "en" | "fa" = "en"): string {
   const d = new Date(iso);
   if (isToday(d)) return format(d, "HH:mm");
-  if (isYesterday(d)) return "Yesterday";
+  if (isYesterday(d)) return lang === "fa" ? "دیروز" : "Yesterday";
   const now = new Date();
+  if (lang === "fa") {
+    return new Intl.DateTimeFormat(
+      "fa-IR",
+      now.getFullYear() === d.getFullYear()
+        ? { day: "numeric", month: "short" }
+        : { year: "numeric", month: "2-digit", day: "2-digit" }
+    ).format(d);
+  }
   if (now.getFullYear() === d.getFullYear()) return format(d, "d MMM");
   return format(d, "dd/MM/yyyy");
 }
@@ -49,6 +64,7 @@ export function avatarTint(seed: string): string {
 }
 
 export function isImage(type: string | null, name?: string | null): boolean {
+  if (type === "image/svg+xml") return false;
   if (type?.startsWith("image/")) return true;
   return /\.(png|jpe?g|gif|webp|avif|heic)$/i.test(name ?? "");
 }
@@ -70,7 +86,7 @@ export function bytes(size: number): string {
 }
 
 export function previewOf(body: string | null, hasMedia: boolean, mediaName?: string | null): string {
-  if (body?.startsWith("luma:e2ee:v1:")) return "🔒 Encrypted message";
+  if (body?.startsWith("luma:e2ee:")) return "🔒 Encrypted message";
   if (body?.startsWith("luma:sticker:v1:")) return "✨ Sticker";
   if (body?.startsWith("luma:gif:v1:")) return "GIF";
   if (body && body.trim()) return body.trim().replace(/\s+/g, " ");
