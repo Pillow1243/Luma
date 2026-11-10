@@ -27,7 +27,8 @@ and a native Android app.
   WebRTC with authenticated `turn-credentials` Edge Function support and
   membership-scoped Supabase Realtime signaling.
 - **English & Persian (RTL)** — switchable UI with bundled Inter + Vazirmatn
-  fonts, Jalali/Persian date formatting, and logical RTL layout.
+  fonts, Jalali/Persian date formatting, and logical RTL layout
+  (translation coverage is partial — see [docs/SECURITY.md](docs/SECURITY.md) §3.14).
 - **Offline history and outbox** — recent visited conversations remain
   readable; queued text messages survive reload and retry when connected.
 - **Voice waveforms, polls, stickers & GIPHY** — live audio level recorder with
@@ -177,6 +178,9 @@ npm run test:db:all      # replay + authorization + production parity
 
 All three run in CI on every push and pull request. Setup and troubleshooting:
 [docs/DB.md](docs/DB.md) and [scripts/dev-postgres.md](scripts/dev-postgres.md).
+
+Security posture, the audit that produced it, and an honest comparison with
+Telegram: **[docs/SECURITY.md](docs/SECURITY.md)**.
 
 ### Live authorization suite (needs real accounts)
 

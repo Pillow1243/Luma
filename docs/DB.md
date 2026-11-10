@@ -169,6 +169,7 @@ state at the time of writing.
 | `sync_poll_vote_counts` was executable by `anon` | P3 | `20261110150000` | **no** — pending |
 | group/channel owners could not upload their own avatar (`media_upload` demanded the uploader be a member under their own id) | P2 | `20261110170000_fix_chat_avatar_upload.sql` | **no** — pending |
 | `redeem_invite` counted a use even when it granted nothing (a member re-opening the group's own link), so a `max_uses` invite could be exhausted by people who were already in the chat | P2 | `20261110190000_fix_redeem_invite_uses.sql` | **no** — pending |
+| `subscribe_channel` has no cap: a public channel can be joined by more accounts than the 100-member limit enforced on groups and invites, so "channels are unbounded, groups are not" is an undocumented product rule rather than a bug | P3 | not fixed — needs a product decision | — |
 | 8 functions differed between production and the repository (`handle_profile_delete` did not prefer live profiles when transferring chat ownership; `notify_mentions`, `request_join`, `set_group_admin`, `remove_chat_member`, `is_chat_member`, `cleanup_expired_messages` formatting) | P2 | `20261110150000` | **no** — pending |
 
 "Deployed" is stated separately from "merged" on purpose: the migration files
