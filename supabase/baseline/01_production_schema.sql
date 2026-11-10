@@ -41,6 +41,14 @@ begin
     create extension if not exists pgcrypto;
   exception when others then null;
   end;
+  -- pg_trgm lives in the `extensions` schema on the hosted project (the
+  -- operator class below is referenced as extensions.gin_trgm_ops). It has to
+  -- be created here, before the trigram indexes, and not only in a migration:
+  -- otherwise replaying this file alone cannot build a searchable schema.
+  begin
+    create extension if not exists pg_trgm schema extensions;
+  exception when others then null;
+  end;
 end $$;
 
 -- ------------------------------------------------------------------ tables --
