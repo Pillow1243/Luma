@@ -23,9 +23,14 @@ run() {
   echo "::endgroup::"
 
   # Keep the annotation readable: GitHub truncates very long messages.
+  # Prefer the block that starts at the first failure line, since suite output
+  # puts the actual differences on the following indented lines.
   local summary
-  summary="$(grep -E '^(✗|FAIL|error|Error|TypeError|AssertionError)|error:|ERROR:|failed' "$out" | head -25 || true)"
-  [ -z "$summary" ] && summary="$(tail -25 "$out")"
+  summary="$(awk '
+    /^(✗|FAIL|error|Error|TypeError|AssertionError)/ { hit = 1 }
+    hit { print; n++; if (n >= 30) exit }
+  ' "$out")"
+  [ -z "$summary" ] && summary="$(tail -30 "$out")"
 
   # Multi-line annotations use %0A separators.
   local encoded
