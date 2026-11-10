@@ -189,7 +189,11 @@ async function runScenario(group) {
     console.log(`PASS: ${group ? "three-person audio mesh and recipient screen share" : "direct video and recipient screen share"} (mock Supabase)`);
   } catch (error) {
     console.error("Browser call smoke test failed:", { calls, participants, recentEvents: events.slice(-12), errors });
-    for (const page of pages) console.error("Visible UI:", (await page.locator("body").innerText().catch(() => "")).slice(-1000));
+    if (process.env.GITHUB_ACTIONS) {
+      const message = `${group ? "Group" : "Direct"} call: ${error.message}`.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+      console.log(`::error title=WebRTC browser smoke test::${message}`);
+    }
+    for (const page of pages) console.error("Visible UI:", (await page.locator("body").innerText({ timeout: 3000 }).catch(() => "")).slice(-1000));
     throw error;
   } finally {
     await Promise.all(contexts.map((context) => context.close().catch(() => {})));
