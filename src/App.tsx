@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { MotionConfig } from "framer-motion";
+import JoinPage from "./pages/JoinPage";
+import StarredPage from "./pages/StarredPage";
 import AuthPage from "./pages/AuthPage";
 import MessengerPage from "./pages/MessengerPage";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -53,6 +56,21 @@ function Shell() {
     document.title = user ? "Luma — Messenger" : "Luma — Light up your conversations";
   }, [user, location.pathname]);
 
+  useEffect(() => {
+    if (
+      location.pathname.startsWith("/join/") &&
+      sessionStorage.getItem("luma-after-auth") === location.pathname
+    ) {
+      sessionStorage.removeItem("luma-after-auth");
+    }
+  }, [location.pathname]);
+
+  // Remember invite links so we can resume them after sign-in.
+  if (!user && location.pathname.startsWith("/join/")) {
+    sessionStorage.setItem("luma-after-auth", location.pathname);
+  }
+  const afterAuth = sessionStorage.getItem("luma-after-auth");
+
   if (!isSupabaseConfigured) return <ConfigMissing />;
   if (loading) return <Booting />;
 
@@ -79,11 +97,17 @@ function Shell() {
             exit={{ opacity: 0 }}
             className="h-full"
           >
-            <Routes>
-              <Route path="/" element={<MessengerPage />} />
-              <Route path="/chat/:chatId" element={<MessengerPage />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+            {afterAuth && afterAuth !== location.pathname && location.pathname === "/" ? (
+              <Navigate to={afterAuth} replace />
+            ) : (
+              <Routes>
+                <Route path="/" element={<MessengerPage />} />
+                <Route path="/chat/:chatId" element={<MessengerPage />} />
+                <Route path="/starred" element={<StarredPage />} />
+                <Route path="/join/:token" element={<JoinPage />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -96,7 +120,9 @@ export default function App() {
     <ThemeProvider>
       <ToastProvider>
         <AuthProvider>
-          <Shell />
+          <MotionConfig reducedMotion="user">
+            <Shell />
+          </MotionConfig>
         </AuthProvider>
       </ToastProvider>
     </ThemeProvider>

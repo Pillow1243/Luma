@@ -43,4 +43,6 @@ coverage/
 *.tsbuildinfo
 .jdk/
 release/*.apk
+release/*.apk.idsig
 release/*.aab
+.jdk/

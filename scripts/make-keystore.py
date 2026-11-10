@@ -21,7 +21,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "mobile" / "keystore" / "luma-release.keystore"
-PASS = os.environ.get("LUMA_KEYSTORE_PASS", "luma-release-2026")
+PASS = os.environ.get("LUMA_KEYSTORE_PASS")
+if not PASS:
+    sys.exit("LUMA_KEYSTORE_PASS is not set — refusing to generate a keystore with a default password.")
 ALIAS = os.environ.get("LUMA_KEY_ALIAS", "luma")
 DNAME = (
     "/C=US/ST=District of Columbia/L=Washington/O=Luma/OU=Messenger"

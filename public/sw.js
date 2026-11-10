@@ -1,5 +1,5 @@
-/* Luma service worker — app-shell caching for the installable PWA. */
-const VERSION = "luma-v1";
+/* Luma service worker — app-shell caching + web push notifications. */
+const VERSION = "luma-v2";
 const PRECACHE = ["/", "/index.html", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -55,4 +55,46 @@ self.addEventListener("fetch", (event) => {
       )
     );
   }
+});
+
+/* ------------------------------- push ---------------------------------- */
+self.addEventListener("push", (event) => {
+  let data = { title: "Luma", body: "New activity in your conversations.", url: "/" };
+  try {
+    if (event.data) data = { ...data, ...event.data.json() };
+  } catch {
+    try {
+      data.body = event.data.text();
+    } catch {
+      /* keep defaults */
+    }
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      tag: data.tag || "luma-message",
+      data: { url: data.url || "/" },
+      renotify: true,
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((wins) => {
+        for (const win of wins) {
+          if ("focus" in win) {
+            win.navigate(target);
+            return win.focus();
+          }
+        }
+        return clients.openWindow(target);
+      })
+  );
 });

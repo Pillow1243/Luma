@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { BellOff, Pin } from "lucide-react";
+import { Archive, BellOff, Hash, VolumeX } from "lucide-react";
 import { Avatar } from "./Avatar";
 import { chatAvatarProfile, chatTitle } from "../lib/data";
 import { previewOf, shortStamp } from "../lib/format";
@@ -16,19 +16,22 @@ export function ChatListItem({
   active: boolean;
   onClick: () => void;
 }) {
-  const title = chatTitle(summary, meId);
-  const avatarProfile = chatAvatarProfile(summary, meId);
-  const otherPart = summary.participants.find(
-    (p) => p.id !== meId && summary.chat.is_group
-  );
+  const { chat } = summary;
+  const isSaved = chat.kind === "saved";
+  const isChannel = chat.kind === "channel";
+  const isGroup = chat.is_group || isChannel;
+  const title = isSaved ? "Saved Messages" : chatTitle(summary, meId);
+  const avatarProfile = isSaved || isChannel ? null : chatAvatarProfile(summary, meId);
   const typing = summary.typing.length > 0;
   const unread = summary.unreadCount > 0;
+  const muted = Boolean(summary.mutedUntil && new Date(summary.mutedUntil) > new Date());
+  const archived = Boolean(summary.archivedAt);
   const last = summary.lastMessage;
   const preview = typing
     ? "typing…"
     : last
-    ? previewOf(last.body, Boolean(last.media_path), last.media_name)
-    : "Say hello 👋";
+      ? previewOf(last.body, Boolean(last.media_path), last.media_name)
+      : "No messages yet";
 
   return (
     <motion.button
@@ -47,13 +50,22 @@ export function ChatListItem({
         />
       )}
 
-      <Avatar
-        profile={avatarProfile ?? otherPart}
-        label={summary.chat.is_group ? summary.chat.name ?? "Group" : title}
-        group={summary.chat.is_group}
-        size={48}
-        online={typing}
-      />
+      <div className="relative">
+        <Avatar
+          profile={avatarProfile}
+          label={isSaved ? "Saved" : chat.name ?? title}
+          group={isGroup}
+          saved={isSaved}
+          chatAvatarPath={isGroup ? chat.avatar_path : null}
+          size={48}
+          online={typing}
+        />
+        {isChannel && (
+          <span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full border-2 border-luma-ink bg-luma-500 text-white">
+            <Hash className="h-3 w-3" strokeWidth={2.5} />
+          </span>
+        )}
+      </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
@@ -82,15 +94,18 @@ export function ChatListItem({
             {preview}
           </span>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
-            {summary.chat.is_group && (
-              <Pin className="h-3 w-3 text-slate-600" strokeWidth={2} />
-            )}
+            {muted && <BellOff className="h-3 w-3 text-slate-500" aria-label="Muted" />}
+            {archived && <Archive className="h-3 w-3 text-slate-500" aria-label="Archived" />}
             {unread ? (
-              <span className="grid h-[19px] min-w-[19px] place-items-center rounded-full bg-luma-gradient px-1.5 text-[10.5px] font-bold text-white shadow-bubble">
+              <span
+                className={`grid h-[19px] min-w-[19px] place-items-center rounded-full px-1.5 text-[10.5px] font-bold text-white shadow-bubble ${
+                  muted ? "bg-slate-600" : "bg-luma-gradient"
+                }`}
+              >
                 {summary.unreadCount > 99 ? "99+" : summary.unreadCount}
               </span>
-            ) : last ? (
-              <BellOff className="hidden h-3 w-3 text-slate-700" />
+            ) : muted ? (
+              <VolumeX className="sr-only" />
             ) : null}
           </div>
         </div>

@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, HashRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
+import "@fontsource-variable/inter";
 
 /**
  * Capacitor serves the bundle from `https://localhost` (or `file://`), where
