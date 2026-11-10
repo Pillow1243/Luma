@@ -875,15 +875,17 @@ export function chatAvatarProfile(
 
 /* --------------------- web push / account / diagnostics ------------------ */
 
-export async function triggerPushNotification(
-  chatId: string,
-  title: string,
-  preview: string
-): Promise<void> {
+/**
+ * Ask the server to notify a chat's other participants about a message.
+ *
+ * Only identifiers are sent: the edge function reads the message row itself and
+ * builds the notification text server-side, so a compromised client cannot push
+ * arbitrary (phishing) content to other users' devices and encrypted bodies are
+ * never handed to the push service.
+ */
+export async function triggerPushNotification(chatId: string, messageId: string): Promise<void> {
   try {
-    await supabase.functions.invoke("send-push", {
-      body: { chatId, title, preview },
-    });
+    await supabase.functions.invoke("send-push", { body: { chatId, messageId } });
   } catch {
     // Best-effort — never block message delivery
   }

@@ -10,7 +10,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { fetchProfile, updateProfile } from "../lib/data";
 import type { Profile } from "../lib/types";
-import { cacheProfile, cachedProfile } from "../lib/offline";
+import { cacheProfile, cachedProfile, clearOfflineUser } from "../lib/offline";
 
 type AuthCtx = {
   session: Session | null;
@@ -21,7 +21,7 @@ type AuthCtx = {
   clearPasswordRecovery: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<{ needsConfirm: boolean }>;
-  signOut: () => Promise<void>;
+  signOut: (opts?: { purgeSecretKeys?: boolean }) => Promise<void>;
   signOutAll: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   renameMe: (name: string) => Promise<void>;
@@ -138,19 +138,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const signOut = useCallback(async () => {
+  /**
+   * Signing out must also erase what this browser knows about the account:
+   * cached chats/messages, queued outbox entries and unsent drafts. Otherwise
+   * the next account on a shared device can read them (see docs/DB.md →
+   * "Device data"). Secret-chat keys are kept unless the caller explicitly
+   * asks for a device wipe, because losing them is unrecoverable.
+   */
+  const wipeLocalAccount = useCallback(async (userId: string | undefined) => {
+    if (!userId) return;
+    await clearOfflineUser(userId).catch(() => {});
+  }, []);
+
+  const signOut = useCallback(async (opts: { purgeSecretKeys?: boolean } = {}) => {
+    const userId = session?.user?.id;
+    if (opts.purgeSecretKeys && userId) {
+      await clearOfflineUser(userId, { purgeSecretKeys: true }).catch(() => {});
+    } else {
+      await wipeLocalAccount(userId);
+    }
     await supabase.auth.signOut();
     setProfile(null);
     setSession(null);
     setIsPasswordRecovery(false);
-  }, []);
+  }, [session?.user?.id, wipeLocalAccount]);
 
   const signOutAll = useCallback(async () => {
+    const userId = session?.user?.id;
+    await wipeLocalAccount(userId);
     await supabase.auth.signOut({ scope: "global" });
     setProfile(null);
     setSession(null);
     setIsPasswordRecovery(false);
-  }, []);
+  }, [session?.user?.id, wipeLocalAccount]);
 
   const clearPasswordRecovery = useCallback(() => {
     setIsPasswordRecovery(false);

@@ -51,6 +51,54 @@ jobs:
           test -f supabase/migrations/20261109000000_luma_v3_1_schema.sql
           test -f supabase/migrations/20261110120000_luma_security_and_ratchet.sql
 
+  # ---------------------------------------------------------------------------
+  # Database suites. These replay supabase/baseline/ + supabase/migrations/ on a
+  # throwaway PostgreSQL and then attack the result as multiple users, so they
+  # need no Supabase credentials and touch no real data.
+  # ---------------------------------------------------------------------------
+  database:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:55432/postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install contrib extensions (citext, pg_trgm, pgcrypto)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-contrib-16 || true
+          PGPASSWORD=postgres psql "postgresql://postgres@localhost:55432/postgres" -c "select version();"
+
+      - name: Replay migrations (fresh + upgrade must match)
+        run: npm run test:db
+
+      - name: Multi-user authorization suite (RLS / RPC / Storage)
+        run: npm run test:db:security
+
+      - name: Schema parity with production fingerprint
+        run: npm run test:db:parity
+
 # NOTE: the live RLS authorization suite (tests/rls-tests.mjs) runs manually
 # against the production Supabase project — it creates throwaway accounts, so
 # it deliberately does not run on every PR. See README → "Testing".

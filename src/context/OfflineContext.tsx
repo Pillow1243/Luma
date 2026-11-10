@@ -9,7 +9,8 @@ export type ConnectionState = "online" | "offline" | "reconnecting";
 type OfflineCtx = {
   connection: ConnectionState;
   outbox: OutboxEntry[];
-  enqueue: (input: { chatId: string; body: string; replyTo?: string | null; mentions?: string[]; expiresAt?: string | null }) => Promise<void>;
+  /** Returns the client-generated message id (also the outbox key). */
+  enqueue: (input: { chatId: string; body: string; replyTo?: string | null; mentions?: string[]; expiresAt?: string | null }) => Promise<string>;
   retry: (id: string) => Promise<void>;
   discard: (id: string) => Promise<void>;
 };
@@ -127,6 +128,7 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
     await putOutbox(entry);
     announce();
     void flush();
+    return entry.id;
   }, [userId, announce, flush]);
   const retry = useCallback(async (id: string) => {
     if (!userId) return;

@@ -159,9 +159,30 @@ npm run preview   # serve the production bundle
 
 ## Testing
 
-`tests/rls-tests.mjs` is the live authorization suite: four throwaway accounts
-sign up through the real auth flow and every allowed/denied assertion runs
-through the same PostgREST path the app uses.
+### Database suites (no Supabase, no credentials)
+
+```bash
+docker run -d --name luma-pg -p 55432:5432 -e POSTGRES_PASSWORD=postgres postgres:16
+export DATABASE_URL="postgresql://postgres:postgres@localhost:55432/postgres"
+npm run test:db:all      # replay + authorization + production parity
+```
+
+* `npm run test:db` — replays `supabase/baseline/` + every migration on an empty
+  and on a pre-populated database and requires an identical result.
+* `npm run test:db:security` — **85** multi-user RLS/RPC/Storage scenarios
+  (IDOR, privilege escalation, invites, prekey bundles, push endpoints, polls,
+  `anon` access, `search_path`, rate-limit tampering).
+* `npm run test:db:parity` — compares the replayed schema against the captured
+  production fingerprint, so repository/production drift fails the build.
+
+All three run in CI on every push and pull request. Setup and troubleshooting:
+[docs/DB.md](docs/DB.md) and [scripts/dev-postgres.md](scripts/dev-postgres.md).
+
+### Live authorization suite (needs real accounts)
+
+`tests/rls-tests.mjs` signs up four throwaway accounts through the real auth flow
+and every allowed/denied assertion runs through the same PostgREST path the app
+uses.
 
 ```bash
 SUPABASE_URL=https://<ref>.supabase.co SUPABASE_ANON_KEY=<publishable key> \

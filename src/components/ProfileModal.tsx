@@ -64,6 +64,7 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
   const [username, setUsername] = useState(profile?.username ?? "");
   const [bio, setBio] = useState(profile?.bio ?? "");
   const [showLastSeen, setShowLastSeen] = useState(profile?.show_last_seen ?? true);
+  const [wipeKeysOnSignOut, setWipeKeysOnSignOut] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingUser, setSavingUser] = useState(false);
   const [savingBio, setSavingBio] = useState(false);
@@ -736,16 +737,33 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
           <span className="chip">v2.1.0</span>
         </div>
 
-        <button
-          onClick={() => {
-            onClose();
-            signOut();
-          }}
-          className="flex w-full items-center gap-3 rounded-2xl border border-rose-400/20 bg-rose-500/[0.08] px-4 py-3 text-start transition-colors hover:bg-rose-500/[0.16]"
-        >
-          <LogOut className="h-4 w-4 text-rose-300" />
-          <span className="flex-1 text-[14px] text-rose-200">{t("signOut")}</span>
-        </button>
+        <div className="rounded-2xl border border-rose-400/20 bg-rose-500/[0.06] p-3">
+          <label className="flex items-start gap-2 text-[12px] leading-relaxed text-slate-400">
+            <input
+              type="checkbox"
+              checked={wipeKeysOnSignOut}
+              onChange={(e) => setWipeKeysOnSignOut(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-rose-400"
+            />
+            <span>
+              <span className="block text-[13px] text-slate-300">{t("signOutWipeDevice")}</span>
+              {wipeKeysOnSignOut && (
+                <span className="mt-1 block text-rose-300">{t("signOutWipeWarn")}</span>
+              )}
+              {!wipeKeysOnSignOut && <span className="mt-1 block">{t("signOutLocalNote")}</span>}
+            </span>
+          </label>
+          <button
+            onClick={async () => {
+              onClose();
+              await signOut({ purgeSecretKeys: wipeKeysOnSignOut });
+            }}
+            className="mt-3 flex w-full items-center gap-3 rounded-2xl border border-rose-400/20 bg-rose-500/[0.10] px-4 py-3 text-start transition-colors hover:bg-rose-500/[0.18]"
+          >
+            <LogOut className="h-4 w-4 text-rose-300" />
+            <span className="flex-1 text-[14px] text-rose-200">{t("signOut")}</span>
+          </button>
+        </div>
       </div>
     </Modal>
   );
