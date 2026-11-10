@@ -25,6 +25,7 @@ type Session = {
   names: Map<string, string>; pendingIce: Map<string, RTCIceCandidateInit[]>;
   seen: Set<string>; chains: Map<string, Promise<void>>;
   screen: MediaStream | null; closed: boolean; timer: number | null; offerers: Set<string>; restarting: Set<string>;
+  participantSyncVersion: number; participantSyncApplied: number;
 };
 type CallCtx = { startCall: (chat: ChatSummary, kind: "audio" | "video") => Promise<void>; busy: boolean };
 const Ctx = createContext<CallCtx | null>(null);
@@ -91,10 +92,14 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   const sendSignal = useCallback(async (s: Session, target: string, kind: CallSignal["kind"], payload: object) => {
     if (!me || s.closed) return;
+    // Reuse the ID if a response is lost after insertion: Realtime and the
+    // backlog may deliver it more than once, but the receiver's seen set will
+    // process it only once even if it already deleted the original row.
+    const id = crypto.randomUUID();
     let lastError: { message?: string; code?: string } | null = null;
     for (let attempt = 0; attempt < 3 && !s.closed; attempt++) {
-      const { error } = await supabase.from("call_signals").insert({ call_id: s.call.id, from_user: me, to_user: target, kind, payload });
-      if (!error) return;
+      const { error } = await supabase.from("call_signals").insert({ id, call_id: s.call.id, from_user: me, to_user: target, kind, payload });
+      if (!error || error.code === "23505") return;
       lastError = error;
       if (/^(22|23|28|42|P0001)/.test(error.code || "")) break;
       await new Promise((resolve) => window.setTimeout(resolve, 300 * 2 ** attempt));
@@ -185,13 +190,22 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   const syncParticipants = useCallback(async (s: Session) => {
     if (!me || s.closed) return;
+    const version = ++s.participantSyncVersion;
     const { data, error } = await supabase.from("call_participants").select("*").eq("call_id", s.call.id);
-    if (error || s.closed) return;
+    // Realtime updates can launch overlapping queries; a slow older response
+    // must not overwrite the newer participant state already applied.
+    if (error || s.closed || version < s.participantSyncApplied) return;
+    s.participantSyncApplied = version;
     const participants = (data ?? []) as CallParticipant[];
     const self = participants.find((p) => p.user_id === me && p.status === "joined");
     if (!self?.joined_at) return;
     for (const other of participants) {
+      if (s.closed || version !== s.participantSyncApplied) return;
       if (other.user_id === me) continue;
+      // A ringing snapshot may have been taken before this person accepted,
+      // even if their offer/ICE has already arrived. Only terminal states
+      // prove an existing peer should be closed.
+      if (other.status === "ringing") continue;
       if (other.status !== "joined") {
         const pc = s.peers.get(other.user_id);
         if (pc) { pc.close(); s.peers.delete(other.user_id); s.remote.delete(other.user_id); publishRemote(s); }
@@ -199,6 +213,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       }
       if (!s.names.has(other.user_id)) {
         const p = await fetchProfile(other.user_id).catch(() => null);
+        if (s.closed || version !== s.participantSyncApplied) return;
         if (p) s.names.set(other.user_id, p.display_name);
       }
       // Earlier joiner creates the offer. Stable ordering avoids offer glare,
@@ -234,7 +249,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   }, [cleanup, handleSignal, me, syncParticipants, toast]);
 
   const makeSession = useCallback((call: CallRecord, stream: MediaStream, title: string): Session => {
-    const s: Session = { call, local: stream, channel: null, peers: new Map(), remote: new Map(), names: new Map(), pendingIce: new Map(), seen: new Set(), chains: new Map(), screen: null, closed: false, timer: null, offerers: new Set(), restarting: new Set() };
+    const s: Session = { call, local: stream, channel: null, peers: new Map(), remote: new Map(), names: new Map(), pendingIce: new Map(), seen: new Set(), chains: new Map(), screen: null, closed: false, timer: null, offerers: new Set(), restarting: new Set(), participantSyncVersion: 0, participantSyncApplied: 0 };
     sessionRef.current = s;
     setView({ call, title, phase: "calling", local: stream, remote: [], muted: false, cameraOff: call.kind !== "video", sharing: false });
     setBusy(true);

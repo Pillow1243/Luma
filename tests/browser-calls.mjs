@@ -1,8 +1,10 @@
 /**
  * Browser-level WebRTC smoke test. The media connections are real Chromium
  * RTCPeerConnections, using fake capture devices and localhost ICE candidates;
- * all Supabase REST and Realtime traffic is mocked in-memory. This does not
- * verify the live Supabase project, TURN, real capture prompts, or Android.
+ * all Supabase REST and Realtime traffic is mocked in-memory. It deliberately
+ * reorders participant snapshots and simulates an accepted answer whose HTTP
+ * response is lost. This does not verify the live Supabase project, TURN,
+ * real capture prompts, or Android.
  *
  * Run after `npm run build`: CHROME_PATH=/path/to/chromium npm run test:browser:calls
  */
@@ -46,6 +48,12 @@ async function runScenario(group) {
   const members = profiles.map((p) => ({ chat_id: CHAT, user_id: p.id, last_read_at: now, last_seen_at: null, typing_until: null, is_admin: false, muted_until: null, archived_at: null }));
   const chat = { id: CHAT, name: group ? "Test group" : null, is_group: group, created_by: A, created_at: now, avatar_path: null, ttl_seconds: null, kind: group ? "group" : "direct", description: "", username: null, is_public: false };
   let calls = [], participants = [], signals = [], sockets = [], nextId = 1;
+  let staleCaptured = false;
+  let releaseStale;
+  const staleGate = new Promise((resolve) => { releaseStale = resolve; });
+  let lostSignalId = null;
+  let signalRetried;
+  const signalRetry = new Promise((resolve) => { signalRetried = resolve; });
   const publicKeys = {}, errors = [], browsers = [], contexts = [], events = [];
   const equal = (url, key) => url.searchParams.get(key)?.replace(/^eq\./, "");
   const matchRows = (url, rows, fields) => rows.filter((row) => fields.every((key) => !url.searchParams.get(key)?.startsWith("eq.") || row[key] === equal(url, key)));
@@ -104,9 +112,34 @@ async function runScenario(group) {
           if (method === "POST") { const row = request.postDataJSON(); publicKeys[row.user_id] = row.public_key; data = null; status = 201; }
           else data = Object.entries(publicKeys).map(([user_id, public_key]) => ({ user_id, public_key })).filter((row) => !equal(url, "user_id") || row.user_id === equal(url, "user_id"));
         } else if (table === "calls") data = matchRows(url, calls, ["id", "chat_id"]);
-        else if (table === "call_participants") data = matchRows(url, participants, ["call_id", "user_id", "status"]);
+        else if (table === "call_participants") {
+          data = matchRows(url, participants, ["call_id", "user_id", "status"]);
+          // Deterministically delay an older ringing snapshot until after the
+          // newer joined snapshot has established a group call. Real network
+          // requests and Realtime updates can arrive in this order.
+          if (group && user === A && equal(url, "call_id") && !staleCaptured && data.some((row) => row.status === "ringing")) {
+            data = structuredClone(data);
+            staleCaptured = true;
+            await staleGate;
+          }
+        }
         else if (table === "call_signals") {
-          if (method === "POST") { const row = { id: crypto.randomUUID(), created_at: new Date().toISOString(), ...request.postDataJSON() }; signals.push(row); data = null; status = 201; setTimeout(() => emit("call_signals", "INSERT", row), 10); }
+          if (method === "POST") {
+            const row = { id: crypto.randomUUID(), created_at: new Date().toISOString(), ...request.postDataJSON() };
+            if (lostSignalId === row.id) signalRetried(row.id);
+            if (signals.some((signal) => signal.id === row.id)) {
+              data = { code: "23505", message: "duplicate key" }; status = 409;
+            } else {
+              signals.push(row);
+              setTimeout(() => emit("call_signals", "INSERT", row), 10);
+              if (!lostSignalId && row.kind === "answer") {
+                // The server accepted this answer but its response was lost.
+                // A retry must preserve its id even if the receiver deletes it.
+                lostSignalId = row.id;
+                data = { message: "simulated lost response" }; status = 503;
+              } else { data = null; status = 201; }
+            }
+          }
           else if (method === "DELETE") { signals = signals.filter((row) => row.id !== equal(url, "id")); data = null; }
           else data = matchRows(url, signals, ["call_id", "to_user"]);
         } else if (table === "start_luma_call") {
@@ -117,7 +150,9 @@ async function runScenario(group) {
           setTimeout(() => rows.forEach((row) => emit("call_participants", "INSERT", { ...row })), 15);
         } else if (table === "respond_luma_call") {
           const input = request.postDataJSON(), participant = participants.find((p) => p.call_id === input.call_uuid && p.user_id === user), call = calls.find((c) => c.id === input.call_uuid);
-          participant.status = input.accept_call ? "joined" : "declined"; participant.joined_at = input.accept_call ? new Date().toISOString() : null;
+          participant.status = input.accept_call ? "joined" : "declined";
+          // Equal group join timestamps exercise the user-ID tie breaker.
+          participant.joined_at = input.accept_call ? (group ? new Date(Date.parse(call.created_at) + 1).toISOString() : new Date().toISOString()) : null;
           if (input.accept_call) { call.status = "active"; call.answered_at = new Date().toISOString(); }
           data = null; setTimeout(() => { emit("call_participants", "UPDATE", { ...participant }); emit("calls", "UPDATE", { ...call }); }, 15);
         } else if (table === "leave_luma_call") {
@@ -138,7 +173,11 @@ async function runScenario(group) {
     });
     const page = await context.newPage();
     page.on("pageerror", (error) => errors.push(error.message));
-    page.on("console", (entry) => { if (["error", "warning"].includes(entry.type())) console.error("Browser", user, entry.type(), entry.text()); });
+    page.on("console", (entry) => {
+      if (entry.type() === "error" && lostSignalId && entry.text().includes("status of 503")) console.log("Browser", user, "observed the expected simulated lost response");
+      else if (["error", "warning"].includes(entry.type())) console.error("Browser", user, entry.type(), entry.text());
+      if (/\[Luma\] (could not process call signal|call offer failed|signaling failed)/.test(entry.text())) errors.push(entry.text());
+    });
     // Localhost is a secure context and the app uses hash routing there.
     await page.goto(`${origin}/#/chat/${CHAT}`, { waitUntil: "domcontentloaded" });
     return page;
@@ -155,6 +194,19 @@ async function runScenario(group) {
     await Promise.all(recipients.map((page) => page.getByRole("dialog", { name: "Incoming call" }).waitFor({ timeout: 20000 })));
     await Promise.all(recipients.map((page) => page.getByRole("button", { name: "Accept call" }).click()));
     await Promise.all(pages.map((page) => page.waitForFunction((count) => window.__lumaPeers.filter((pc) => pc.connectionState === "connected").length >= count, pages.length - 1, { timeout: 40000 })));
+    let retryTimeout;
+    try {
+      const retriedId = await Promise.race([signalRetry, new Promise((_, reject) => { retryTimeout = setTimeout(() => reject(new Error("answer retry did not preserve its ID")), 5000); })]);
+      assert.equal(retriedId, lostSignalId, "a retry must reuse the originally accepted signal ID");
+      // Let any duplicate Realtime event arrive before checking for errors.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } finally { clearTimeout(retryTimeout); }
+    if (group) {
+      assert.ok(staleCaptured, "test must capture a stale ringing snapshot");
+      releaseStale();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      assert.equal(await caller.evaluate(() => window.__lumaPeers.filter((pc) => pc.connectionState === "connected").length), pages.length - 1, "a stale ringing snapshot must not close connected peers");
+    }
     for (const page of pages) {
       const connections = await page.evaluate(() => window.__lumaPeers.filter((pc) => pc.connectionState === "connected").map((pc) => pc.getReceivers().map((receiver) => receiver.track.kind)));
       assert.ok(connections.every((tracks) => tracks.includes("audio")), "each connected peer must receive an audio track");
@@ -181,12 +233,13 @@ async function runScenario(group) {
     await caller.getByRole("dialog", { name: "Active call" }).waitFor({ state: "hidden", timeout: 10000 });
     if (group) {
       await Promise.all(recipients.map((page) => page.getByRole("dialog", { name: "Active call" }).waitFor({ state: "visible", timeout: 10000 })));
+      await Promise.all(recipients.map((page) => page.waitForFunction(() => window.__lumaPeers.filter((pc) => pc.connectionState === "connected").length === 1 && window.__lumaPeers.some((pc) => pc.connectionState === "closed"), null, { timeout: 10000 })));
       await recipients[0].getByRole("button", { name: "End", exact: true }).click();
     }
     await Promise.all(recipients.map((page) => page.getByRole("dialog", { name: "Active call" }).waitFor({ state: "hidden", timeout: 10000 })));
     for (const signal of ["offer", "answer", "ice"]) assert.ok(events.some((event) => event.table === "call_signals" && event.kind === signal), `${signal} was exchanged`);
     assert.deepEqual(errors, []);
-    console.log(`PASS: ${group ? "three-person audio mesh and recipient screen share" : "direct video and recipient screen share"} (mock Supabase)`);
+    console.log(`PASS: ${group ? "three-person audio mesh, reordered participant snapshot and screen share" : "direct video and screen share"}; lost signaling response retried (mock Supabase)`);
   } catch (error) {
     console.error("Browser call smoke test failed:", { calls, participants, recentEvents: events.slice(-12), errors });
     if (process.env.GITHUB_ACTIONS) {
@@ -196,6 +249,7 @@ async function runScenario(group) {
     for (const page of pages) console.error("Visible UI:", (await page.locator("body").innerText({ timeout: 3000 }).catch(() => "")).slice(-1000));
     throw error;
   } finally {
+    releaseStale();
     await Promise.all(contexts.map((context) => context.close().catch(() => {})));
     await Promise.all(browsers.map((browser) => browser.close().catch(() => {})));
   }

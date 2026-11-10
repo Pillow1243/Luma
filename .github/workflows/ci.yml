@@ -6,7 +6,6 @@ on:
   pull_request:
 
 permissions:
-  actions: read
   contents: read
 
 jobs:
@@ -36,23 +35,6 @@ jobs:
           VITE_SUPABASE_URL: https://lnhmbjqjfrnqkpsjpszb.supabase.co
           VITE_SUPABASE_ANON_KEY: sb_publishable_XpWiwKw-bTG_au74ylwn8A_SYeJQWLE
           VITE_APP_URL: https://luma-messenger-chi.vercel.app
-
-      # Temporary: surface the earlier failed run's error in an annotation.
-      - name: Diagnose previous browser smoke failure
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh run view 42774379497 --log-failed > /tmp/luma-previous-ci.log 2>&1; then
-            python3 - <<'PYLOG'
-          import re
-          text = open('/tmp/luma-previous-ci.log').read().splitlines()
-          selected = [line.split('\t')[-1] for line in text if re.search(r'AssertionError|TimeoutError|locator\.|Browser call smoke test failed|Error:|PASS:|at runScenario|##\[error\]', line)]
-          message = ('\n'.join(selected[-35:]) or 'No matching error lines found').replace('%','%25').replace('\r','%0D').replace('\n','%0A')
-          print('::notice title=Previous browser failure::' + message[:6000])
-          PYLOG
-          else
-            echo '::notice::Unable to retrieve earlier CI log'
-          fi
 
       - name: WebRTC browser smoke test (mock backend)
         run: npm run test:browser:calls

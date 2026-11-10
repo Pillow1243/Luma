@@ -82,5 +82,6 @@ they are not encrypted and are not guaranteed to work offline.
 - Test sign-in, reload offline, enqueue, restart, reconnect, and account change.
 - The current test suite validates crypto round trips and tamper detection,
   IndexedDB account isolation and expiry, idempotent message retries, and
-  browser call/screen-share smoke tests with mocked Supabase traffic. These are
-  not a substitute for a real two-device/network/security test.
+  browser call/screen-share smoke tests with mocked Supabase traffic, including
+  delayed participant snapshots and a lost signaling response. These are not a
+  substitute for a real two-device/network/security test.
