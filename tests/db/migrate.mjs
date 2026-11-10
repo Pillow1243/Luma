@@ -31,6 +31,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { probeExtensions, loadAdapted } from "./env.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, "..", "..");
@@ -73,64 +74,6 @@ const log = (...a) => { if (!QUIET) console.log(...a); };
  */
 const adaptations = [];
 
-async function probeCapabilities(client) {
-  const have = new Set();
-  let genRandomUuidCore = false;
-  try {
-    // Probing on a throwaway connection matters: a failed CREATE EXTENSION
-    // aborts the enclosing transaction, and a probe database may not even
-    // exist yet. Both would masquerade as "module missing".
-    const probe = await clientFor("postgres");
-    try {
-      const { rows } = await probe.query(
-        `select name from pg_available_extensions where name in ('citext','pgcrypto','pg_trgm','pg_cron')`
-      );
-      for (const r of rows) have.add(r.name);
-    } finally {
-      await probe.end();
-    }
-    const v = await probeVersion(client);
-    genRandomUuidCore = Number(v) >= 130000;
-  } catch (err) {
-    log(`  ! capability probe failed (${err.message}); assuming a bare server`);
-  }
-  return { have, genRandomUuidCore };
-}
-
-async function probeVersion(client) {
-  const { rows } = await client.query("select current_setting('server_version_num') as n");
-  return rows[0].n;
-}
-
-/** Apply the local shims/config rewrites for modules the server lacks. */
-function transformSql(sql, caps) {
-  let out = sql;
-  const has = (n) => caps.have.has(n);
-
-  if (!has("citext")) {
-    adaptations.push("citext -> domain (identifiers are always stored lowercased)");
-    out = out.replace(/create\s+extension\s+if\s+not\s+exists\s+citext\s*;/gi, "");
-    // migrations run with search_path='' inside functions, so the domain must be
-    // reachable as public.citext; the shim creates exactly that.
-  }
-  if (!has("pgcrypto")) {
-    adaptations.push("pgcrypto skipped (gen_random_uuid is in core PostgreSQL >= 13)");
-    out = out.replace(/create\s+extension\s+if\s+not\s+exists\s+pgcrypto\s*;/gi, "");
-  }
-  if (!has("pg_trgm")) {
-    adaptations.push("pg_trgm skipped; trigram GIN indexes omitted locally");
-    out = out.replace(/create\s+extension\s+if\s+not\s+exists\s+pg_trgm[^;]*;/gi, "create schema if not exists extensions;");
-    // remove the CREATE INDEX statements that need the gin_trgm_ops opclass
-    out = out.replace(/create\s+index[^;]*?gin_trgm_ops[^;]*;/gis, "");
-  }
-  if (!has("pg_cron")) {
-    adaptations.push("pg_cron skipped; cron.schedule() backed by the shim cron.job table");
-    out = out.replace(/create\s+extension\s+if\s+not\s+exists\s+pg_cron\s*;/gi, "");
-  }
-  return out;
-}
-
-
 function baseClient() {
   const c = new pg.Client({ connectionString: DATABASE_URL });
   return c;
@@ -161,7 +104,7 @@ async function recreateDatabase(name) {
 }
 
 async function runFile(client, path, label, caps) {
-  const sql = caps ? transformSql(readFileSync(path, "utf8"), caps) : readFileSync(path, "utf8");
+  const sql = caps ? loadAdapted(path, caps, adaptations) : readFileSync(path, "utf8");
   try {
     await client.query(sql);
   } catch (err) {
@@ -397,10 +340,8 @@ async function main() {
   const files = migrationFiles();
   log(`migration files: ${files.length}`);
 
-  const probe = await clientFor("postgres");
-  const caps = await probeCapabilities(probe);
-  await probe.end();
-  log(`extensions available: ${[...caps.have].join(", ") || "(none)"}`);
+  const caps = await probeExtensions(() => clientFor("postgres"));
+  log(`extensions available: ${[...caps].join(", ") || "(none)"}`);
 
   const fresh = await buildFresh(caps);
 

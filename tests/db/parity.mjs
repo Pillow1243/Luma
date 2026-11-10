@@ -30,6 +30,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { adaptSql, probeExtensions } from "./env.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, "..", "..");
@@ -72,19 +73,8 @@ async function rebuild() {
   await admin.end();
 
   const client = await connect(DB);
-  const hasExt = async (name) =>
-    (await client.query(`select 1 from pg_available_extensions where name=$1`, [name])).rowCount > 0;
-  const transform = async (sql) => {
-    let out = sql;
-    if (!(await hasExt("citext"))) out = out.replace(/create\s+extension\s+if\s+not\s+exists\s+citext\s*;/gi, "");
-    if (!(await hasExt("pgcrypto"))) out = out.replace(/create\s+extension\s+if\s+not\s+exists\s+pgcrypto\s*;/gi, "");
-    if (!(await hasExt("pg_trgm"))) {
-      out = out.replace(/create\s+extension\s+if\s+not\s+exists\s+pg_trgm[^;]*;/gi, "create schema if not exists extensions;");
-      out = out.replace(/create\s+index[^;]*?gin_trgm_ops[^;]*;/gis, "");
-    }
-    if (!(await hasExt("pg_cron"))) out = out.replace(/create\s+extension\s+if\s+not\s+exists\s+pg_cron\s*;/gi, "");
-    return out;
-  };
+  const have = await probeExtensions(() => connect("postgres"));
+
   const { readdirSync } = await import("node:fs");
   const files = [
     join(repo, "supabase", "baseline", "00_platform_shim.sql"),
@@ -96,7 +86,7 @@ async function rebuild() {
       .map((f) => join(repo, "supabase", "migrations", f)),
   ];
   for (const f of files) {
-    await client.query(await transform(readFileSync(f, "utf8")));
+    await client.query(adaptSql(readFileSync(f, "utf8"), have));
   }
   return client;
 }
