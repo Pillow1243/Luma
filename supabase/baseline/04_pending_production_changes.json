@@ -1,0 +1,16 @@
+{
+  "_comment": "Differences from production that exist only because a committed migration has not been deployed there yet. Every entry names the migration that closes it; tests/db/parity.mjs tolerates exactly these and fails on anything else. Delete an entry right after applying the migration, so the file always reflects reality.",
+  "_policies_note": "Policy expressions cannot be fingerprinted across Postgres versions; tests/db/security.mjs asserts their behaviour instead.",
+  "functions": {
+    "cleanup_push_log()": "20261110180000_push_log.sql (retention job for push_log)",
+    "redeem_invite(invite_token uuid)": "20261110190000_fix_redeem_invite_uses.sql stops a re-opened invite link consuming a use without granting membership",
+    "register_push_subscription(p_endpoint text, p_p256dh text, p_auth text)": "20261110160000_harden_push_registration.sql stops an endpoint being moved to another account (P0 takeover fix)"
+  },
+  "generated_at": "2026-11-10",
+  "grants": {
+    "poll_vote_counts:authenticated:MAINTAIN,REFERENCES,SELECT,TRIGGER,TRUNCATE": "20261110150000_reconcile_with_production.sql revokes TRUNCATE/REFERENCES/TRIGGER/MAINTAIN from authenticated, keeping SELECT"
+  },
+  "tables": {
+    "push_log": "20261110180000_push_log.sql adds push dedup/rate-limit storage for send-push"
+  }
+}

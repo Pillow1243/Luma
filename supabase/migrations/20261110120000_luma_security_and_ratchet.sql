@@ -141,6 +141,12 @@ begin
 end
 $$;
 
+-- The counters are maintained by SECURITY DEFINER functions only. Leaving this
+-- executable by `authenticated` let any signed-in user reset their own
+-- send_message / create_invite / request_join counters between calls, which
+-- silently disabled every abuse limit in the schema.
+revoke all on function public.check_rate_limit(text, integer, integer) from public, anon, authenticated;
+
 create or replace function public.cleanup_expired_messages()
 returns integer
 language plpgsql

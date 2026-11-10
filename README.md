@@ -27,7 +27,8 @@ and a native Android app.
   WebRTC with authenticated `turn-credentials` Edge Function support and
   membership-scoped Supabase Realtime signaling.
 - **English & Persian (RTL)** — switchable UI with bundled Inter + Vazirmatn
-  fonts, Jalali/Persian date formatting, and logical RTL layout.
+  fonts, Jalali/Persian date formatting, and logical RTL layout
+  (translation coverage is partial — see [docs/SECURITY.md](docs/SECURITY.md) §3.14).
 - **Offline history and outbox** — recent visited conversations remain
   readable; queued text messages survive reload and retry when connected.
 - **Voice waveforms, polls, stickers & GIPHY** — live audio level recorder with
@@ -159,9 +160,33 @@ npm run preview   # serve the production bundle
 
 ## Testing
 
-`tests/rls-tests.mjs` is the live authorization suite: four throwaway accounts
-sign up through the real auth flow and every allowed/denied assertion runs
-through the same PostgREST path the app uses.
+### Database suites (no Supabase, no credentials)
+
+```bash
+docker run -d --name luma-pg -p 55432:5432 -e POSTGRES_PASSWORD=postgres postgres:16
+export DATABASE_URL="postgresql://postgres:postgres@localhost:55432/postgres"
+npm run test:db:all      # replay + authorization + production parity
+```
+
+* `npm run test:db` — replays `supabase/baseline/` + every migration on an empty
+  and on a pre-populated database and requires an identical result.
+* `npm run test:db:security` — **86** multi-user RLS/RPC/Storage scenarios
+  (IDOR, privilege escalation, invites, prekey bundles, push endpoints, polls,
+  `anon` access, `search_path`, rate-limit tampering).
+* `npm run test:db:parity` — compares the replayed schema against the captured
+  production fingerprint, so repository/production drift fails the build.
+
+All three run in CI on every push and pull request. Setup and troubleshooting:
+[docs/DB.md](docs/DB.md) and [scripts/dev-postgres.md](scripts/dev-postgres.md).
+
+Security posture, the audit that produced it, and an honest comparison with
+Telegram: **[docs/SECURITY.md](docs/SECURITY.md)**.
+
+### Live authorization suite (needs real accounts)
+
+`tests/rls-tests.mjs` signs up four throwaway accounts through the real auth flow
+and every allowed/denied assertion runs through the same PostgREST path the app
+uses.
 
 ```bash
 SUPABASE_URL=https://<ref>.supabase.co SUPABASE_ANON_KEY=<publishable key> \

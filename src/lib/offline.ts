@@ -91,15 +91,67 @@ export async function cacheSentMessage(userId: string, message: MessageWithMeta)
   await tx.done;
 }
 
-export async function clearOfflineUser(userId: string) {
+/**
+ * Remove every trace of one account from this device.
+ *
+ * Called on sign-out: without it, the next person to use a shared browser (or
+ * the same person signing into a second account) could read the previous
+ * account's cached chats, message snapshots, drafts and queued outbox from
+ * IndexedDB/localStorage.
+ *
+ * Secret-chat key material (`keys`, `peerKeys`) is deliberately *kept* by
+ * default: deleting a secret-chat identity makes every past secret message
+ * permanently unreadable, even for the legitimate owner. `purgeSecretKeys`
+ * exists for "wipe this device" and must be a conscious, warned choice.
+ */
+export async function clearOfflineUser(userId: string, opts: { purgeSecretKeys?: boolean } = {}) {
   const db = await offlineDB();
-  const tx = db.transaction(["profiles", "chats", "messages", "outbox"], "readwrite");
+  const stores: Array<"profiles" | "chats" | "messages" | "outbox" | "peerKeys"> = [
+    "profiles",
+    "chats",
+    "messages",
+    "outbox",
+  ];
+  if (opts.purgeSecretKeys) stores.push("peerKeys");
+  const tx = db.transaction(stores, "readwrite");
   await Promise.all([
     tx.objectStore("profiles").delete(userId),
     tx.objectStore("chats").delete(userId),
-    (async () => { for (const row of await tx.objectStore("messages").getAll()) if (row.userId === userId) await tx.objectStore("messages").delete(row.key); })(),
-    (async () => { for (const row of await tx.objectStore("outbox").index("by-user").getAll(userId)) await tx.objectStore("outbox").delete(row.id); })(),
+    (async () => {
+      for (const row of await tx.objectStore("messages").getAll()) {
+        if (row.userId === userId) await tx.objectStore("messages").delete(row.key);
+      }
+    })(),
+    (async () => {
+      for (const row of await tx.objectStore("outbox").index("by-user").getAll(userId)) {
+        await tx.objectStore("outbox").delete(row.id);
+      }
+    })(),
+    opts.purgeSecretKeys
+      ? (async () => {
+          for (const row of await tx.objectStore("peerKeys").getAll()) {
+            if (row.key.startsWith(`${userId}:`)) await tx.objectStore("peerKeys").delete(row.key);
+          }
+        })()
+      : Promise.resolve(),
   ]);
   await tx.done;
-  // Never silently erase a secret-chat private key: it cannot be recovered.
+  clearDrafts(userId);
+}
+
+/** Drafts are stored in localStorage under `luma-draft:<userId>:<chatId>`. */
+const DRAFT_PREFIX = "luma-draft:";
+export function clearDrafts(userId: string) {
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith(`${DRAFT_PREFIX}${userId}:`) || key.startsWith(`${DRAFT_PREFIX}guest:`))) {
+        doomed.push(key);
+      }
+    }
+    for (const key of doomed) localStorage.removeItem(key);
+  } catch {
+    /* storage disabled */
+  }
 }

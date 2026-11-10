@@ -41,13 +41,17 @@ alter table public.call_signals enable row level security;
 revoke all on public.calls, public.call_participants, public.call_signals from anon, authenticated;
 grant select on public.calls, public.call_participants to authenticated;
 grant select, insert, delete on public.call_signals to authenticated;
+drop policy if exists calls_read on public.calls;
 create policy calls_read on public.calls for select to authenticated using (public.is_chat_member(chat_id));
+drop policy if exists call_participants_read on public.call_participants;
 create policy call_participants_read on public.call_participants for select to authenticated using (
   exists (select 1 from public.calls c where c.id = call_participants.call_id and public.is_chat_member(c.chat_id))
 );
+drop policy if exists call_signals_receive on public.call_signals;
 create policy call_signals_receive on public.call_signals for select to authenticated using (
   to_user = auth.uid() and exists (select 1 from public.calls c where c.id = call_signals.call_id and public.is_chat_member(c.chat_id))
 );
+drop policy if exists call_signals_send on public.call_signals;
 create policy call_signals_send on public.call_signals for insert to authenticated with check (
   from_user = auth.uid() and exists (
     select 1 from public.calls c
@@ -56,6 +60,7 @@ create policy call_signals_send on public.call_signals for insert to authenticat
     where c.id = call_signals.call_id and c.status <> 'ended' and public.is_chat_member(c.chat_id)
   )
 );
+drop policy if exists call_signals_delete_received on public.call_signals;
 create policy call_signals_delete_received on public.call_signals for delete to authenticated using (to_user = auth.uid());
 
 create or replace function public.start_luma_call(cid uuid, call_kind text)
@@ -132,8 +137,10 @@ create table if not exists public.user_public_keys (
 alter table public.user_public_keys enable row level security;
 revoke all on public.user_public_keys from anon, authenticated;
 grant select, insert on public.user_public_keys to authenticated;
+drop policy if exists public_keys_read on public.user_public_keys;
 create policy public_keys_read on public.user_public_keys for select to authenticated
   using (user_id = auth.uid() or public.shares_chat_with(user_id));
+drop policy if exists public_keys_insert_own on public.user_public_keys;
 create policy public_keys_insert_own on public.user_public_keys for insert to authenticated with check (user_id = auth.uid());
 
 create table if not exists public.polls (
@@ -165,10 +172,13 @@ alter table public.poll_options enable row level security;
 alter table public.poll_votes enable row level security;
 revoke all on public.polls, public.poll_options, public.poll_votes from anon, authenticated;
 grant select on public.polls, public.poll_options, public.poll_votes to authenticated;
+drop policy if exists polls_read on public.polls;
 create policy polls_read on public.polls for select to authenticated using (public.is_chat_member(chat_id));
+drop policy if exists poll_options_read on public.poll_options;
 create policy poll_options_read on public.poll_options for select to authenticated using (
   exists (select 1 from public.polls p where p.id = poll_options.poll_id and public.is_chat_member(p.chat_id))
 );
+drop policy if exists poll_votes_read on public.poll_votes;
 create policy poll_votes_read on public.poll_votes for select to authenticated using (
   exists (select 1 from public.polls p where p.id = poll_votes.poll_id and public.is_chat_member(p.chat_id))
 );

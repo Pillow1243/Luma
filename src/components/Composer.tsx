@@ -76,7 +76,9 @@ export function Composer({
 }) {
   const toast = useToast();
   const { t } = useI18n();
-  const draftKey = `luma-draft:${chatId}`;
+  // Drafts are scoped by user: on a shared device, signing out and back in as
+  // somebody else must never restore the previous account's unsent text.
+  const draftKey = `luma-draft:${meId}:${chatId}`;
   const [value, setValue] = useState(() => {
     try {
       return secret ? "" : localStorage.getItem(draftKey) ?? "";

@@ -155,29 +155,39 @@ alter table public.blocks enable row level security;
 alter table public.message_reports enable row level security;
 alter table public.notifications enable row level security;
 
+drop policy if exists starred_own on public.starred_messages;
 create policy starred_own on public.starred_messages for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+drop policy if exists notifications_read_own on public.notifications;
 create policy notifications_read_own on public.notifications for select to authenticated
   using (user_id = auth.uid());
+drop policy if exists notifications_update_own on public.notifications;
 create policy notifications_update_own on public.notifications for update to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists notifications_delete_own on public.notifications;
 create policy notifications_delete_own on public.notifications for delete to authenticated
   using (user_id = auth.uid());
 
+drop policy if exists blocks_own on public.blocks;
 create policy blocks_own on public.blocks for all to authenticated
   using (blocker = auth.uid()) with check (blocker = auth.uid());
 
+drop policy if exists reports_insert_own on public.message_reports;
 create policy reports_insert_own on public.message_reports for insert to authenticated
   with check (reporter = auth.uid() and public.is_chat_member(chat_id));
+drop policy if exists reports_read_own_or_admin on public.message_reports;
 create policy reports_read_own_or_admin on public.message_reports for select to authenticated
   using (reporter = auth.uid() or public.is_chat_admin(chat_id));
 
+drop policy if exists invites_admin_read on public.chat_invites;
 create policy invites_admin_read on public.chat_invites for select to authenticated
   using (public.is_chat_admin(chat_id));
+drop policy if exists invites_admin_revoke on public.chat_invites;
 create policy invites_admin_revoke on public.chat_invites for update to authenticated
   using (public.is_chat_admin(chat_id)) with check (public.is_chat_admin(chat_id));
 
+drop policy if exists join_requests_read on public.join_requests;
 create policy join_requests_read on public.join_requests for select to authenticated
   using (user_id = auth.uid() or public.is_chat_admin(chat_id));
 
@@ -185,7 +195,10 @@ create policy join_requests_read on public.join_requests for select to authentic
 drop policy if exists push_select_own on public.push_subscriptions;
 drop policy if exists push_insert_own on public.push_subscriptions;
 drop policy if exists push_delete_own on public.push_subscriptions;
+drop policy if exists push_select_own on public.push_subscriptions;
 create policy push_select_own on public.push_subscriptions for select to authenticated using (user_id = auth.uid());
+drop policy if exists push_insert_own on public.push_subscriptions;
 create policy push_insert_own on public.push_subscriptions for insert to authenticated with check (user_id = auth.uid());
+drop policy if exists push_delete_own on public.push_subscriptions;
 create policy push_delete_own on public.push_subscriptions for delete to authenticated using (user_id = auth.uid());
 

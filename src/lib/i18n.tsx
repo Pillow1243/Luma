@@ -88,6 +88,9 @@ const MESSAGES = {
     report: "Report",
     pinnedMessages: "Pinned messages",
     noResults: "No results found",
+    signOutLocalNote: "Unsent drafts and cached chats on this device are erased. Secret-chat keys stay, so your secret history is still readable here.",
+    signOutWipeDevice: "Also wipe secret-chat keys from this device",
+    signOutWipeWarn: "Secret-chat keys cannot be recovered. Every secret message on this device becomes unreadable forever, including messages you sent.",
   },
   fa: {
     appName: "لوما",
@@ -172,6 +175,9 @@ const MESSAGES = {
     report: "گزارش",
     pinnedMessages: "پیام‌های سنجاق‌شده",
     noResults: "نتیجه‌ای یافت نشد",
+    signOutLocalNote: "پیش‌نویس‌های ارسال‌نشده و گفتگوهای ذخیره‌شده روی این دستگاه پاک می‌شوند. کلیدهای گفتگوی محرمانه باقی می‌مانند تا تاریخچه محرمانه‌تان هنوز قابل خواندن باشد.",
+    signOutWipeDevice: "کلیدهای گفتگوی محرمانه هم از این دستگاه پاک شوند",
+    signOutWipeWarn: "کلیدهای گفتگوی محرمانه قابل بازیابی نیستند. همه پیام‌های محرمانه روی این دستگاه — از جمله پیام‌هایی که خودتان فرستاده‌اید — برای همیشه غیرقابل خواندن می‌شوند.",
   },
 } as const;
 

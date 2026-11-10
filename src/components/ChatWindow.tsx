@@ -657,18 +657,16 @@ export function ChatWindow({
       } else if (body.length > 5000) {
         throw new Error("Messages are limited to 5000 characters.");
       }
-      await enqueue({
+      const messageId = await enqueue({
         chatId,
         body: outgoing,
         replyTo: replyTo?.id ?? null,
         mentions: secretMode ? [] : mentions,
         expiresAt,
       });
-      void triggerPushNotification(
-        chatId,
-        profile?.display_name ?? "Luma",
-        secretMode ? "🔒 Encrypted message" : previewOf(body, false)
-      );
+      // Notification text is derived server-side from the stored message.
+      // Secret chats never notify at all (see supabase/functions/send-push).
+      if (!secretMode) void triggerPushNotification(chatId, messageId);
       if (body.trim() === "🎉") celebrate();
       setReplyTo(null);
       requestAnimationFrame(() => scrollToBottom());
@@ -825,11 +823,7 @@ export function ChatWindow({
         setMessages((prev) =>
           prev.some((m) => m.id === saved.id) ? prev : [...prev, hydrated]
         );
-        void triggerPushNotification(
-          chatId,
-          profile?.display_name ?? "Luma",
-          secretMode ? "🔒 Encrypted attachment" : `📎 ${file.name}`
-        );
+        if (!secretMode) void triggerPushNotification(chatId, saved.id);
         setReplyTo(null);
         requestAnimationFrame(() => scrollToBottom());
       } catch (err) {

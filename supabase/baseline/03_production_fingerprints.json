@@ -1,0 +1,684 @@
+{
+  "_comment": "Fingerprints of every public function body on the hosted production project (ref lnhmbjqjfrnqkpsjpszb), captured 2026-11-10. Values are md5 over the body with SQL comments and whitespace removed, so re-indenting or re-commenting a function does not break parity. Regenerate deliberately after an approved production change (docs/DB.md).",
+  "_comment_grants": "Whole-table privileges per role in schema public. Column-scoped INSERT/UPDATE grants are compared separately because they do not appear in relacl; they are listed explicitly in 02_production_grants.sql. The stray MAINTAIN/REFERENCES/TRIGGER/TRUNCATE on poll_vote_counts is a real production defect the reconcile migration removes.",
+  "_comment_policies": "schema.table.policy:command:roles for every RLS policy on production including storage.objects (47). USING/WITH CHECK bodies are reviewed in 01_production_schema.sql and diffed between fresh and upgraded replay by tests/db/migrate.mjs.",
+  "_comment_tables": "Column names per table in production order. Types/not-null/defaults live in 01_production_schema.sql; parity.mjs compares the ordered column list so a missing or extra column fails the build.",
+  "_fingerprint": "md5(regexp_replace(regexp_replace(prosrc, '--[^\\n]*', '', 'g'), '\\s+', ' ', 'g'))",
+  "captured_at": "2026-11-10T00:00:00Z",
+  "functions": {
+    "add_chat_member(cid uuid, new_member uuid)": "e4ec4b10bb53619415832ad52b283754",
+    "approve_join(request_chat uuid, request_user uuid)": "17f697aa52aa7f7eca38b8613f299695",
+    "channel_subscriber_count(cid uuid)": "f854058cf80675e918147a6f65cee9f8",
+    "check_rate_limit(p_action text, p_window_seconds integer, p_max_hits integer)": "bdaf36bb510c8ba42116a357ddd248b5",
+    "claim_prekey_bundle(target_user uuid)": "6364f3fdc2f93b0d5421469760837716",
+    "cleanup_expired_messages()": "e69debe08f199c211bfd5547afe10c4e",
+    "cleanup_luma_calls()": "0c7830c409719f71699c80e3e92d8cb5",
+    "count_one_time_prekeys()": "cf71aa329f9719e97bb7ef53751da665",
+    "create_channel(channel_name text, channel_username text, channel_description text, channel_public boolean, avatar_path text)": "85d347309c3b9a83c98e44a3aa18d1af",
+    "create_chat(member_ids uuid[], chat_name text)": "80fa5e09c30e509a6c0793c355f0eefe",
+    "create_invite(cid uuid, ttl_seconds integer, max_uses integer)": "91da02d8bfa8522735f41373c1d39b79",
+    "create_luma_poll(cid uuid, poll_question text, poll_options text[], p_allow_multiple boolean, p_anonymous boolean, p_closes_in_seconds integer)": "26e1fe57f0e20d5396f49674cb5572fe",
+    "create_saved_chat()": "cd69ac5863a1d5615777544adef2df30",
+    "create_secret_chat(peer uuid, ttl_seconds integer)": "61334b5622ab8150be5d6fa6ccf5c865",
+    "delete_message_for_everyone(msg_id uuid)": "7a4e9beca51c168d5cb08043b4e5c61d",
+    "delete_message_for_me(msg_id uuid)": "3340cfbd7f87cf84429ea0eff280d51d",
+    "edit_message(msg_id uuid, new_body text)": "54d09ceec6bd96033914744afcb0be27",
+    "get_chat_sidebar_meta(cids uuid[])": "fb13b41a508e2ecb0ec3a8263b699879",
+    "get_poll_results(poll_uuid uuid)": "2e6023caaa45a9d46dabf934843db90b",
+    "handle_new_user()": "fe344abca7d9ae9ef8104d37c6dbf23f",
+    "handle_profile_delete()": "5f647bc8c2c05db391b68155bdb5ba91",
+    "is_channel(cid uuid)": "e7024d11932dede000b2da95b5028ca1",
+    "is_chat_admin(cid uuid)": "070dac88654ca86d91214b29c9fafde3",
+    "is_chat_member(cid uuid)": "a7207df8def88a6a2d6bec3fd0408a85",
+    "leave_chat(cid uuid)": "1e560cdce1ab3b0115c4aac04fba7377",
+    "leave_luma_call(call_uuid uuid)": "bcd701a7d45159852f7ff851f751a915",
+    "mark_notifications_read()": "c58209d442e9dc80b9c598ed20f95fd2",
+    "message_reports_guardian()": "f4a38cbe264e42ef33471dde35e6a1b5",
+    "messages_guardian()": "c930d1cca4b72b32b97f8fdef9d242d6",
+    "notify_mentions()": "6f87f8ca441baa32bed0c0794ce56332",
+    "profiles_privacy_guard()": "1e6b621c9ca436305378d4e2e3f77b06",
+    "protect_participant_role()": "e9e328da5798b3ae5b513d43c663113d",
+    "publish_prekey_bundle(p_identity_key text, p_signing_key text, p_signed_prekey_id integer, p_signed_prekey text, p_signed_prekey_sig text, p_one_time_keys jsonb)": "18e718ca7d0d42a9c33de5048a712a1f",
+    "redeem_invite(invite_token uuid)": "c43d90f7098de7fc10b95cbac4ac46fd",
+    "register_push_subscription(p_endpoint text, p_p256dh text, p_auth text)": "e532e844d5b5008c37cf289aeeea1751",
+    "reject_join(request_chat uuid, request_user uuid)": "c7db67044298dbf9b8f342fe5f1e86ce",
+    "remove_chat_member(cid uuid, target uuid)": "fdfffc0220f9e3968fd452b2d8b909c0",
+    "request_join(cid uuid)": "9b6089472bef60b9e777d7fd58d6e0ec",
+    "respond_luma_call(call_uuid uuid, accept_call boolean)": "e35852dfd3eb388ad89239ac010b8b1b",
+    "revoke_invite(invite_token uuid)": "122e5dafac42f7981c8a13e7467ae274",
+    "search_channels(term text)": "42b9366f9a649589c40def39353729d9",
+    "search_users(term text)": "0e4ddfdc7e6051c0a6753fee449f9290",
+    "set_chat_ttl(cid uuid, ttl_seconds integer)": "e7695c5d193bcafa5614a4816bcfdaf8",
+    "set_group_admin(cid uuid, target uuid, make_admin boolean)": "0e6fa3b72876d11bd73dc75b902ecb8b",
+    "set_message_pinned(msg_id uuid, pin boolean)": "0e0e304343b6f79e70c36c74a80d3d4c",
+    "shares_chat_with(other uuid)": "137f132e7173ffd6a82d5795ce716243",
+    "start_luma_call(cid uuid, call_kind text)": "927ce31f0d0e4ea7b2c1bb5ee5cad34e",
+    "subscribe_channel(cid uuid)": "a216c9ae616bcbc9c759f9923e6d2027",
+    "sync_poll_vote_counts()": "5bcd1f2ae255f978a849b0240c257603",
+    "update_channel(cid uuid, new_name text, new_description text, new_username text, new_public boolean, new_avatar_path text)": "8b0719b05a913cd429c6e53cc0e81077",
+    "update_group(cid uuid, new_name text, new_avatar_path text)": "f4214844bd975dd576526f0afa29e0f1",
+    "vote_luma_poll(poll_uuid uuid, option_uuid uuid)": "b9bace8ff76b5b9d901e915baccece14"
+  },
+  "grants": [
+    "blocks:authenticated:DELETE,SELECT",
+    "call_participants:authenticated:SELECT",
+    "call_signals:authenticated:DELETE,SELECT",
+    "calls:authenticated:SELECT",
+    "chat_invites:authenticated:SELECT",
+    "chat_participants:authenticated:SELECT",
+    "chats:authenticated:SELECT",
+    "join_requests:authenticated:SELECT",
+    "message_reactions:authenticated:DELETE,SELECT",
+    "message_reports:authenticated:SELECT",
+    "messages:authenticated:SELECT",
+    "notifications:authenticated:DELETE,SELECT",
+    "poll_options:authenticated:SELECT",
+    "poll_vote_counts:authenticated:MAINTAIN,REFERENCES,SELECT,TRIGGER,TRUNCATE",
+    "poll_votes:authenticated:SELECT",
+    "polls:authenticated:SELECT",
+    "profiles:authenticated:SELECT",
+    "push_subscriptions:authenticated:DELETE,SELECT",
+    "starred_messages:authenticated:DELETE,SELECT",
+    "user_one_time_prekeys:authenticated:SELECT",
+    "user_prekey_bundles:authenticated:SELECT",
+    "user_public_keys:authenticated:SELECT"
+  ],
+  "policies": [
+    "public.blocks.blocks_own:ALL:{authenticated}",
+    "public.call_participants.call_participants_read:SELECT:{authenticated}",
+    "public.call_signals.call_signals_delete_received:DELETE:{authenticated}",
+    "public.call_signals.call_signals_receive:SELECT:{authenticated}",
+    "public.call_signals.call_signals_send:INSERT:{authenticated}",
+    "public.calls.calls_read:SELECT:{authenticated}",
+    "public.chat_invites.invites_admin_read:SELECT:{authenticated}",
+    "public.chat_invites.invites_admin_revoke:UPDATE:{authenticated}",
+    "public.chat_participants.participants_read:SELECT:{authenticated}",
+    "public.chat_participants.participants_update:UPDATE:{authenticated}",
+    "public.chats.chats_read:SELECT:{authenticated}",
+    "public.join_requests.join_requests_read:SELECT:{authenticated}",
+    "public.message_reactions.reactions_add:INSERT:{authenticated}",
+    "public.message_reactions.reactions_read:SELECT:{authenticated}",
+    "public.message_reactions.reactions_remove:DELETE:{authenticated}",
+    "public.message_reports.reports_insert_own:INSERT:{authenticated}",
+    "public.message_reports.reports_read_own_or_admin:SELECT:{authenticated}",
+    "public.messages.messages_read:SELECT:{authenticated}",
+    "public.messages.messages_send:INSERT:{authenticated}",
+    "public.notifications.notifications_delete_own:DELETE:{authenticated}",
+    "public.notifications.notifications_read_own:SELECT:{authenticated}",
+    "public.notifications.notifications_update_own:UPDATE:{authenticated}",
+    "public.poll_options.poll_options_read:SELECT:{authenticated}",
+    "public.poll_vote_counts.poll_vote_counts_read:SELECT:{authenticated}",
+    "public.poll_votes.poll_votes_read:SELECT:{authenticated}",
+    "public.polls.polls_read:SELECT:{authenticated}",
+    "public.profiles.profiles_insert_own:INSERT:{authenticated}",
+    "public.profiles.profiles_read:SELECT:{authenticated}",
+    "public.profiles.profiles_update:UPDATE:{authenticated}",
+    "public.push_subscriptions.push_delete_own:DELETE:{authenticated}",
+    "public.push_subscriptions.push_insert_own:INSERT:{authenticated}",
+    "public.push_subscriptions.push_select_own:SELECT:{authenticated}",
+    "public.push_subscriptions.push_update_own:UPDATE:{authenticated}",
+    "public.starred_messages.starred_own:ALL:{authenticated}",
+    "public.user_one_time_prekeys.one_time_prekeys_read_own:SELECT:{authenticated}",
+    "public.user_prekey_bundles.prekey_bundles_read:SELECT:{authenticated}",
+    "public.user_public_keys.public_keys_insert_own:INSERT:{authenticated}",
+    "public.user_public_keys.public_keys_read:SELECT:{authenticated}",
+    "public.user_public_keys.public_keys_update_own:UPDATE:{authenticated}",
+    "storage.objects.avatar_delete:DELETE:{authenticated}",
+    "storage.objects.avatar_read:SELECT:{authenticated}",
+    "storage.objects.avatar_update:UPDATE:{authenticated}",
+    "storage.objects.avatar_upload:INSERT:{authenticated}",
+    "storage.objects.channel_avatar_read:SELECT:{authenticated}",
+    "storage.objects.media_delete:DELETE:{authenticated}",
+    "storage.objects.media_read:SELECT:{authenticated}",
+    "storage.objects.media_upload:INSERT:{authenticated}"
+  ],
+  "rlsOff": [],
+  "source": "supabase project lnhmbjqjfrnqkpsjpszb",
+  "tables": {
+    "blocks": {
+      "columns": [
+        {
+          "name": "blocker"
+        },
+        {
+          "name": "blocked"
+        },
+        {
+          "name": "created_at"
+        }
+      ]
+    },
+    "call_participants": {
+      "columns": [
+        {
+          "name": "call_id"
+        },
+        {
+          "name": "user_id"
+        },
+        {
+          "name": "status"
+        },
+        {
+          "name": "joined_at"
+        },
+        {
+          "name": "left_at"
+        }
+      ]
+    },
+    "call_signals": {
+      "columns": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "call_id"
+        },
+        {
+          "name": "from_user"
+        },
+        {
+          "name": "to_user"
+        },
+        {
+          "name": "kind"
+        },
+        {
+          "name": "payload"
+        },
+        {
+          "name": "created_at"
+        }
+      ]
+    },
+    "calls": {
+      "columns": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "chat_id"
+        },
+        {
+          "name": "started_by"
+        },
+        {
+          "name": "kind"
+        },
+        {
+          "name": "status"
+        },
+        {
+          "name": "created_at"
+        },
+        {
+          "name": "answered_at"
+        },
+        {
+          "name": "ended_at"
+        }
+      ]
+    },
+    "chat_invites": {
+      "columns": [
+        {
+          "name": "token"
+        },
+        {
+          "name": "chat_id"
+        },
+        {
+          "name": "created_by"
+        },
+        {
+          "name": "created_at"
+        },
+        {
+          "name": "expires_at"
+        },
+        {
+          "name": "max_uses"
+        },
+        {
+          "name": "uses"
+        },
+        {
+          "name": "revoked_at"
+        }
+      ]
+    },
+    "chat_participants": {
+      "columns": [
+        {
+          "name": "chat_id"
+        },
+        {
+          "name": "user_id"
+        },
+        {
+          "name": "last_read_at"
+        },
+        {
+          "name": "last_seen_at"
+        },
+        {
+          "name": "typing_until"
+        },
+        {
+          "name": "is_admin"
+        },
+        {
+          "name": "muted_until"
+        },
+        {
+          "name": "archived_at"
+        }
+      ]
+    },
+    "chats": {
+      "columns": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "name"
+        },
+        {
+          "name": "is_group"
+        },
+        {
+          "name": "created_by"
+        },
+        {
+          "name": "created_at"
+        },
+        {
+          "name": "avatar_path"
+        },
+        {
+          "name": "is_secret"
+        },
+        {
+          "name": "ttl_seconds"
+        },
+        {
+          "name": "kind"
+        },
+        {
+          "name": "description"
+        },
+        {
+          "name": "username"
+        },
+        {
+          "name": "is_public"
+        }
+      ]
+    },
+    "join_requests": {
+      "columns": [
+        {
+          "name": "chat_id"
+        },
+        {
+          "name": "user_id"
+        },
+        {
+          "name": "created_at"
+        }
+      ]
+    },
+    "message_reactions": {
+      "columns": [
+        {
+          "name": "message_id"
+        },
+        {
+          "name": "user_id"
+        },
+        {
+          "name": "emoji"
+        },
+        {
+          "name": "created_at"
+        }
+      ]
+    },
+    "message_reports": {
+      "columns": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "chat_id"
+        },
+        {
+          "name": "message_id"
+        },
+        {
+          "name": "reporter"
+        },
+        {
+          "name": "reason"
+        },
+        {
+          "name": "details"
+        },
+        {
+          "name": "created_at"
+        }
+      ]
+    },
+    "messages": {
+      "columns": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "chat_id"
+        },
+        {
+          "name": "sender_id"
+        },
+        {
+          "name": "body"
+        },
+        {
+          "name": "reply_to"
+        },
+        {
+          "name": "media_path"
+        },
+        {
+          "name": "media_name"
+        },
+        {
+          "name": "media_type"
+        },
+        {
+          "name": "created_at"
+        },
+        {
+          "name": "edited_at"
+        },
+        {
+          "name": "deleted_at"
+        },
+        {
+          "name": "deleted_for"
+        },
+        {
+          "name": "forwarded_from"
+        },
+        {
+          "name": "pinned_at"
+        },
+        {
+          "name": "expires_at"
+        },
+        {
+          "name": "e2ee"
+        },
+        {
+          "name": "media_waveform"
+        },
+        {
+          "name": "media_duration"
+        },
+        {
+          "name": "mentions"
+        }
+      ]
+    },
+    "notifications": {
+      "columns": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "user_id"
+        },
+        {
+          "name": "chat_id"
+        },
+        {
+          "name": "message_id"
+        },
+        {
+          "name": "actor_id"
+        },
+        {
+          "name": "kind"
+        },
+        {
+          "name": "body"
+        },
+        {
+          "name": "read_at"
+        },
+        {
+          "name": "created_at"
+        }
+      ]
+    },
+    "poll_options": {
+      "columns": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "poll_id"
+        },
+        {
+          "name": "label"
+        },
+        {
+          "name": "position"
+        }
+      ]
+    },
+    "poll_vote_counts": {
+      "columns": [
+        {
+          "name": "poll_id"
+        },
+        {
+          "name": "option_id"
+        },
+        {
+          "name": "votes"
+        },
+        {
+          "name": "updated_at"
+        }
+      ]
+    },
+    "poll_votes": {
+      "columns": [
+        {
+          "name": "poll_id"
+        },
+        {
+          "name": "option_id"
+        },
+        {
+          "name": "user_id"
+        },
+        {
+          "name": "created_at"
+        }
+      ]
+    },
+    "polls": {
+      "columns": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "message_id"
+        },
+        {
+          "name": "chat_id"
+        },
+        {
+          "name": "created_by"
+        },
+        {
+          "name": "question"
+        },
+        {
+          "name": "created_at"
+        },
+        {
+          "name": "closes_at"
+        },
+        {
+          "name": "allow_multiple"
+        },
+        {
+          "name": "anonymous"
+        }
+      ]
+    },
+    "profiles": {
+      "columns": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "display_name"
+        },
+        {
+          "name": "avatar_path"
+        },
+        {
+          "name": "created_at"
+        },
+        {
+          "name": "public_key"
+        },
+        {
+          "name": "last_seen_at"
+        },
+        {
+          "name": "username"
+        },
+        {
+          "name": "bio"
+        },
+        {
+          "name": "show_last_seen"
+        }
+      ]
+    },
+    "push_subscriptions": {
+      "columns": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "user_id"
+        },
+        {
+          "name": "endpoint"
+        },
+        {
+          "name": "p256dh"
+        },
+        {
+          "name": "auth"
+        },
+        {
+          "name": "created_at"
+        }
+      ]
+    },
+    "rate_limits": {
+      "columns": [
+        {
+          "name": "user_id"
+        },
+        {
+          "name": "action"
+        },
+        {
+          "name": "window_start"
+        },
+        {
+          "name": "hits"
+        }
+      ]
+    },
+    "starred_messages": {
+      "columns": [
+        {
+          "name": "user_id"
+        },
+        {
+          "name": "message_id"
+        },
+        {
+          "name": "created_at"
+        }
+      ]
+    },
+    "user_one_time_prekeys": {
+      "columns": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "user_id"
+        },
+        {
+          "name": "key_id"
+        },
+        {
+          "name": "public_key"
+        },
+        {
+          "name": "created_at"
+        }
+      ]
+    },
+    "user_prekey_bundles": {
+      "columns": [
+        {
+          "name": "user_id"
+        },
+        {
+          "name": "identity_key"
+        },
+        {
+          "name": "signing_key"
+        },
+        {
+          "name": "signed_prekey_id"
+        },
+        {
+          "name": "signed_prekey"
+        },
+        {
+          "name": "signed_prekey_sig"
+        },
+        {
+          "name": "updated_at"
+        }
+      ]
+    },
+    "user_public_keys": {
+      "columns": [
+        {
+          "name": "user_id"
+        },
+        {
+          "name": "public_key"
+        },
+        {
+          "name": "created_at"
+        }
+      ]
+    }
+  }
+}
