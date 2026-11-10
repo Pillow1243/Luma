@@ -1,0 +1,61 @@
+name: Android debug preview
+
+# The branch-triggered build delivers the APK for this upgrade. After the
+# workflow reaches the default branch it can also be run manually.
+on:
+  push:
+    branches: [arena/4e58ce1b-luma]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  capacitor-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install dependencies
+        run: npm ci
+      - name: Test and build bundled web app
+        run: npm test && npm run build
+        env:
+          VITE_SUPABASE_URL: https://lnhmbjqjfrnqkpsjpszb.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_XpWiwKw-bTG_au74ylwn8A_SYeJQWLE
+          VITE_APP_URL: https://luma-messenger-chi.vercel.app
+      - name: Generate and configure Capacitor Android project
+        run: |
+          npx cap add android
+          node scripts/configure-capacitor-android.mjs
+          npx cap sync android
+      - name: Assemble debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon
+          mkdir -p ../release
+          cp app/build/outputs/apk/debug/app-debug.apk ../release/luma-2.1.0-debug.apk
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: luma-2.1.0-debug
+          path: release/luma-2.1.0-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish clearly labeled debug prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="android-preview-${GITHUB_SHA:0:12}"
+          gh release create "$tag" release/luma-2.1.0-debug.apk \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "Luma Android debug preview (${GITHUB_SHA:0:7})" \
+            --notes "Capacitor debug build for testing only. It is not signed with the existing Luma release key and cannot update a release-signed installation in place. Secret chat keys and local history are device-bound; uninstalling can destroy them."

@@ -3,19 +3,17 @@ import type { CapacitorConfig } from "@capacitor/cli";
 /**
  * Luma mobile shell.
  *
- * Production (default): the WebView loads the live Vercel deployment, so the
- * APK always ships the latest UI without a store release.
- *
- * Offline/dev: set LUMA_SERVER_URL=http://10.0.2.2:5173 (Android emulator) or
- * your LAN IP before `npx cap sync` to point at a local dev server.
+ * Production: serve the bundled app from Capacitor's secure local origin, so
+ * the same origin/IndexedDB remains available online and offline. A new APK is
+ * required for web updates. For development only, LUMA_SERVER_URL may point
+ * to an emulator/LAN server.
  */
-const serverUrl = process.env.LUMA_SERVER_URL || "https://luma-messenger-chi.vercel.app";
+const serverUrl = process.env.LUMA_SERVER_URL;
 
 const config: CapacitorConfig = {
   appId: "app.luma.messenger",
   appName: "Luma",
   webDir: "dist",
-  bundledWebRuntime: false,
   backgroundColor: "#0b0716",
   android: {
     allowMixedContent: false,
@@ -24,8 +22,7 @@ const config: CapacitorConfig = {
     backgroundColor: "#0b0716",
   },
   server: {
-    url: serverUrl,
-    cleartext: serverUrl.startsWith("http://"),
+    ...(serverUrl ? { url: serverUrl, cleartext: serverUrl.startsWith("http://") } : {}),
     androidScheme: "https",
     allowNavigation: ["*.supabase.co", "luma-messenger-chi.vercel.app", "*.vercel.app"],
   },

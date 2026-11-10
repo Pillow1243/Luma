@@ -7,6 +7,9 @@ import StarredPage from "./pages/StarredPage";
 import AuthPage from "./pages/AuthPage";
 import MessengerPage from "./pages/MessengerPage";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { OfflineProvider } from "./context/OfflineContext";
+import { CallProvider } from "./context/CallContext";
+import { SecretBootstrap } from "./components/SecretBootstrap";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
 import { LumaMark } from "./components/LumaMark";
@@ -120,9 +123,14 @@ export default function App() {
     <ThemeProvider>
       <ToastProvider>
         <AuthProvider>
-          <MotionConfig reducedMotion="user">
-            <Shell />
-          </MotionConfig>
+          <OfflineProvider>
+            <CallProvider>
+              <SecretBootstrap />
+              <MotionConfig reducedMotion="user">
+                <Shell />
+              </MotionConfig>
+            </CallProvider>
+          </OfflineProvider>
         </AuthProvider>
       </ToastProvider>
     </ThemeProvider>

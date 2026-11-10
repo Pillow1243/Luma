@@ -11,7 +11,7 @@ and a native Android app.
 | | |
 | --- | --- |
 | **Web app** | https://luma-messenger-chi.vercel.app |
-| **Android APK** | v2.0.0 — `npm run apk` then `gh release upload v2.0.0 release/luma-2.0.0.apk` (see [GitHub Releases](https://github.com/Pillow1243/Luma/releases); the build sandbox cannot reach `uploads.github.com`, so the asset is attached manually) |
+| **Android APK** | See [GitHub Releases](https://github.com/Pillow1243/Luma/releases) for the Capacitor debug preview. It is not signed with the existing release key and cannot upgrade a release-signed APK in place. |
 | **Package** | `app.luma.messenger` |
 | **Backend** | Supabase — Postgres + RLS + Realtime + Storage |
 
@@ -19,6 +19,15 @@ and a native Android app.
 
 ## Features
 
+- **Audio/video calls** for direct chats and small groups (up to six) using
+  WebRTC and membership-scoped Supabase Realtime signaling. A configured TURN
+  account is needed for dependable connections across restrictive networks.
+- **Offline history and outbox** — recent visited conversations remain
+  readable; queued text messages survive reload and retry when connected.
+- **Experimental secret text** — opt-in, device-bound encrypted direct text
+  with a 24-hour expiry and a security code. This is not an audited or
+  forward-secret protocol; read [the security limitations](docs/UPGRADE.md).
+- **Polls, stickers and optional GIPHY**, plus swipe gestures and celebrations.
 - **Realtime messaging** over Supabase Realtime — new messages, edits, deletions
   and reactions stream into every open chat with no polling.
 - **Optimistic send** — bubbles appear instantly with a spinner, then reconcile
@@ -76,6 +85,7 @@ supabase/
     20261109000004_luma_v3_hardening.sql
     20261109000005_luma_v3_cron.sql
     20261109000006_luma_v3_rpc_fixes.sql
+    20261110064153_luma_calls_secret_polls.sql
 tests/
   rls-tests.mjs             live authorization suite (manual run)
 ```
@@ -95,6 +105,9 @@ tests/
 | `blocks` | User blocks (enforced in `send_message`) |
 | `message_reports` | Reported messages, readable by chat admins/reporters |
 | `chat_invites` / `join_requests` | Invite links + private-channel join approval |
+| `calls` / `call_participants` / `call_signals` | Call history, invitations and recipient-scoped WebRTC signaling |
+| `user_public_keys` | Experimental device-bound secret-text public keys |
+| `polls` / `poll_options` / `poll_votes` | Single-choice, member-visible polls |
 
 Every table is protected by **row-level security**: membership predicates
 (`is_chat_member`, `is_chat_admin`) gate reads and writes, senders are pinned
@@ -118,11 +131,14 @@ Env vars:
 | --- | --- |
 | `VITE_SUPABASE_URL` | `https://<project>.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | anon **or** `sb_publishable_…` key |
-| `VITE_APP_URL` | public web URL (used by the mobile shell) |
+| `VITE_APP_URL` | public web URL |
+| `VITE_TURN_URLS`, `VITE_TURN_USERNAME`, `VITE_TURN_CREDENTIAL` | optional Open Relay/Metered configuration; example credentials are not guaranteed |
+| `VITE_GIPHY_API_KEY` | optional GIPHY developer key; built-in stickers work without it |
 
 ## Build
 
 ```bash
+npm test          # IndexedDB, crypto, call and idempotency unit tests
 npm run build     # typecheck + production bundle → dist/
 npm run preview   # serve the production bundle
 ```
@@ -178,19 +194,20 @@ See **[docs/ANDROID_CAPACITOR.md](docs/ANDROID_CAPACITOR.md)** for the full
 guide. Quick start:
 
 ```bash
-npm run release                 # web build + signed release APK
-npm run apk -- --debug          # debug variant
-npx cap add android && npx cap sync android && npx cap open android   # Gradle path
+npm run build
+npx cap add android
+node scripts/configure-capacitor-android.mjs
+npx cap sync android
+cd android && ./gradlew assembleDebug
 ```
 
-The APK loads the live Vercel app and falls back to the bundle embedded inside
-the APK when the network is unavailable, so first launch always renders Luma.
+The Capacitor debug preview uses the bundled web app at one local secure origin,
+so the same IndexedDB history is available online and offline. It is a debug
+build, not a release-signed upgrade. The original release keystore is not in
+this repository. The legacy Gradle-free WebView shell remains a separate build.
 
-Highlights of the native shell: runtime permission bridge for camera/mic
-(media capture from the WebView), HTTPS deep links for `/join/…` invite URLs,
-edge-to-edge dark system bars with safe-area insets, and a violet progress
-bar. The APK is a debug-free release build signed with the Luma keystore —
-the v2.0.0 build is attached to GitHub Releases.
+For the new calling/offline/encryption architecture, operational setup, and
+important limitations, see **[docs/UPGRADE.md](docs/UPGRADE.md)**.
 
 ## Supabase setup notes
 

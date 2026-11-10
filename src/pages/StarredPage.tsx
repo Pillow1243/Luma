@@ -5,7 +5,7 @@ import { ArrowLeft, Loader2, Star } from "lucide-react";
 import { Aurora } from "../components/Aurora";
 import { Avatar } from "../components/Avatar";
 import { loadStarredMessages } from "../lib/data";
-import { shortStamp } from "../lib/format";
+import { shortStamp, previewOf } from "../lib/format";
 import type { MessageWithMeta } from "../lib/types";
 import { useAuth } from "../context/AuthContext";
 
@@ -72,7 +72,7 @@ export default function StarredPage() {
                     </span>
                   </span>
                   <span className="mt-0.5 block truncate text-[13px] text-slate-300">
-                    {m.body || (m.media_path ? "📎 Attachment" : "Message")}
+                    {previewOf(m.body, Boolean(m.media_path), m.media_name)}
                   </span>
                 </span>
                 <Star className="mt-1 h-4 w-4 shrink-0 fill-amber-300 text-amber-300" />

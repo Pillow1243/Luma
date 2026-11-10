@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUp,
+  BarChart3,
+  Sticker,
   AtSign,
   Check,
   Loader2,
@@ -12,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { bytes } from "../lib/format";
+import { StickerPicker } from "./StickerPicker";
 import type { MessageWithMeta, Profile } from "../lib/types";
 
 const EMOJI = [
@@ -34,11 +37,14 @@ export function Composer({
   placeholder,
   uploading,
   onFiles,
+  canUpload = true,
+  secret = false,
+  onCreatePoll,
 }: {
   chatId: string;
   meId: string;
   participants: Profile[];
-  onSend: (payload: SendPayload) => void;
+  onSend: (payload: SendPayload) => Promise<boolean>;
   onTyping: (typing: boolean) => void;
   onVoice: (blob: Blob, durationSec: number) => void;
   replyTo?: MessageWithMeta | null;
@@ -47,16 +53,21 @@ export function Composer({
   placeholder?: string;
   uploading?: { name: string; size: number } | null;
   onFiles: (files: FileList | null) => void;
+  canUpload?: boolean;
+  secret?: boolean;
+  onCreatePoll?: () => void;
 }) {
   const draftKey = `luma-draft:${chatId}`;
   const [value, setValue] = useState(() => {
     try {
-      return localStorage.getItem(draftKey) ?? "";
+      return secret ? "" : localStorage.getItem(draftKey) ?? "";
     } catch {
       return "";
     }
   });
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [stickersOpen, setStickersOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [recorded, setRecorded] = useState<{ blob: Blob; url: string; duration: number } | null>(null);
@@ -76,7 +87,7 @@ export function Composer({
   // Reset + reload draft when switching chats.
   useEffect(() => {
     try {
-      setValue(localStorage.getItem(draftKey) ?? "");
+      setValue(secret ? "" : localStorage.getItem(draftKey) ?? "");
     } catch {
       setValue("");
     }
@@ -97,15 +108,30 @@ export function Composer({
     if (replyTo) taRef.current?.focus();
   }, [replyTo]);
 
+  // Tracks mode across renders so secret drafts never persist as plaintext.
+  const secretRef = useRef({ chatId, secret });
+
   // Persist the draft (debounced by React render cycle — good enough locally).
   useEffect(() => {
+    // Effects in the same commit still see the old value; do not persist it
+    // during a secret-to-plain transition before the clearing render.
+    if (secretRef.current.chatId === chatId && secretRef.current.secret && !secret) return;
     try {
-      if (value) localStorage.setItem(draftKey, value);
+      if (secret) localStorage.removeItem(draftKey);
+      else if (value) localStorage.setItem(draftKey, value);
       else localStorage.removeItem(draftKey);
     } catch {
       /* storage full / private mode — drafts are best-effort */
     }
-  }, [value, draftKey]);
+  }, [value, draftKey, secret]);
+
+  useEffect(() => {
+    if (secretRef.current.chatId === chatId && secretRef.current.secret && !secret) {
+      setValue("");
+      setMentionOpen(false);
+    }
+    secretRef.current = { chatId, secret };
+  }, [chatId, secret]);
 
   function detectMentionQuery(v: string): string | null {
     const m = v.match(/(?:^|\s)@([a-z0-9_]{0,32})$/i);
@@ -123,7 +149,7 @@ export function Composer({
     typingRef.current = window.setTimeout(() => onTyping(false), 3200);
 
     const q = detectMentionQuery(v);
-    if (q !== null) {
+    if (!secret && q !== null) {
       const list = participants
         .filter(
           (p) =>
@@ -157,20 +183,27 @@ export function Composer({
     return [...found];
   }
 
-  function submit() {
+  async function submit() {
     const body = value.trim();
-    if (!body) return;
-    onSend({ body, mentions: resolveMentions(body) });
-    setValue("");
-    setEmojiOpen(false);
-    setMentionOpen(false);
-    onTyping(false);
-    if (typingRef.current) window.clearTimeout(typingRef.current);
+    if (!body || submitting || disabled) return;
+    setSubmitting(true);
     try {
-      localStorage.removeItem(draftKey);
-    } catch {
-      /* ignore */
-    }
+      const accepted = await onSend({ body, mentions: resolveMentions(body) });
+      if (!accepted) return;
+      setValue("");
+      setEmojiOpen(false);
+      setMentionOpen(false);
+      onTyping(false);
+      if (typingRef.current) window.clearTimeout(typingRef.current);
+      try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
+    } finally { setSubmitting(false); }
+  }
+
+  async function sendSticker(body: string) {
+    if (submitting || disabled || secret) return;
+    setSubmitting(true);
+    try { if (await onSend({ body, mentions: [] })) setStickersOpen(false); }
+    finally { setSubmitting(false); }
   }
 
   /* ------------------------------ voice notes ----------------------------- */
@@ -246,7 +279,7 @@ export function Composer({
                   Replying to {replyTo.sender?.display_name ?? "message"}
                 </div>
                 <div className="truncate text-[12px] text-slate-400">
-                  {replyTo.body || "Attachment"}
+                  {replyTo.body?.startsWith("luma:e2ee:v1:") ? "🔒 Encrypted message" : replyTo.body || "Attachment"}
                 </div>
               </div>
               <button onClick={onCancelReply} className="btn-icon h-8 w-8" aria-label="Cancel reply">
@@ -348,6 +381,8 @@ export function Composer({
         )}
       </AnimatePresence>
 
+      {stickersOpen && !secret && <StickerPicker onClose={() => setStickersOpen(false)} onSelect={(body) => void sendSticker(body)} />}
+
       {/* recording bar */}
       {recording ? (
         <div className="flex items-center gap-3 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3">
@@ -380,11 +415,13 @@ export function Composer({
             onClick={() => fileRef.current?.click()}
             className="btn-icon mb-0.5"
             aria-label="Attach a file"
-            disabled={disabled}
+            title={!canUpload ? secret ? "Secret mode supports text only" : "Attachments require a connection" : "Attach a file"}
+            disabled={disabled || !canUpload}
           >
             <Paperclip className="h-[18px] w-[18px]" />
           </button>
 
+          <button onClick={() => { setStickersOpen((v) => !v); setEmojiOpen(false); }} disabled={disabled || secret} className="btn-icon mb-0.5 hidden h-10 w-10 shrink-0 sm:grid disabled:opacity-30" aria-label="Stickers and GIFs"><Sticker className="h-[18px] w-[18px]" /></button>
           <div className="relative flex min-w-0 flex-1 items-end rounded-[22px] border border-white/10 bg-white/[0.06] px-1.5 py-1 transition-all focus-within:border-luma-400/60 focus-within:bg-white/[0.09] focus-within:ring-4 focus-within:ring-luma-500/12">
             <button
               onClick={() => setEmojiOpen((v) => !v)}
@@ -393,11 +430,13 @@ export function Composer({
             >
               <Smile className="h-[18px] w-[18px]" />
             </button>
+            <button onClick={() => { setStickersOpen((v) => !v); setEmojiOpen(false); }} disabled={disabled || secret} className="mb-1 grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-400 sm:hidden disabled:opacity-30" aria-label="Stickers and GIFs"><Sticker className="h-4 w-4" /></button>
+            <button onClick={onCreatePoll} disabled={disabled || secret || !canUpload} className="mb-1 grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-400 disabled:opacity-30" aria-label="Create poll" title="Create poll"><BarChart3 className="h-4 w-4" /></button>
             <textarea
               ref={taRef}
               rows={1}
               value={value}
-              disabled={disabled}
+              disabled={disabled || submitting}
               onChange={(e) => handleChange(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && mentionOpen) {
@@ -432,12 +471,12 @@ export function Composer({
                 }
               }}
               placeholder={placeholder ?? "Message…"}
-              maxLength={8000}
+              maxLength={secret ? 1100 : 5000}
               className="max-h-[148px] min-h-[38px] flex-1 resize-none bg-transparent px-1 py-2 text-[14.5px] leading-[1.45] text-slate-100 placeholder-slate-500 focus:outline-none"
             />
-            {charCount > 1500 && (
-              <span className={`pointer-events-none absolute -top-2 right-3 rounded-full px-2 py-0.5 text-[10px] font-medium ${charCount > 7500 ? "bg-rose-500/20 text-rose-200" : "bg-white/10 text-slate-400"}`}>
-                {charCount}/8000
+            {charCount > (secret ? 900 : 1500) && (
+              <span className={`pointer-events-none absolute -top-2 right-3 rounded-full px-2 py-0.5 text-[10px] font-medium ${charCount > (secret ? 1000 : 4800) ? "bg-rose-500/20 text-rose-200" : "bg-white/10 text-slate-400"}`}>
+                {charCount}/{secret ? 1100 : 5000}
               </span>
             )}
           </div>
@@ -446,7 +485,7 @@ export function Composer({
             <motion.button
               whileTap={{ scale: 0.92 }}
               onClick={submit}
-              disabled={disabled}
+              disabled={disabled || submitting}
               className="mb-0.5 grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-luma-gradient text-white shadow-bubble transition-all disabled:opacity-40"
               aria-label="Send message"
             >
@@ -456,7 +495,8 @@ export function Composer({
             <motion.button
               whileTap={{ scale: 0.92 }}
               onClick={startRecording}
-              disabled={disabled}
+              disabled={disabled || !canUpload}
+              title={!canUpload ? "Voice messages require a connection" : "Record voice message"}
               className="mb-0.5 grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-luma-200 transition-all hover:bg-white/[0.1] disabled:opacity-40"
               aria-label="Record voice message"
             >

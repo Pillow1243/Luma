@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { useRef, useState } from "react";
 import { Archive, BellOff, Hash, VolumeX } from "lucide-react";
 import { Avatar } from "./Avatar";
 import { chatAvatarProfile, chatTitle } from "../lib/data";
@@ -10,12 +11,18 @@ export function ChatListItem({
   meId,
   active,
   onClick,
+  onArchive,
 }: {
   summary: ChatSummary;
   meId: string;
   active: boolean;
   onClick: () => void;
+  onArchive?: (archived: boolean) => void;
 }) {
+  const [swipeX, setSwipeX] = useState(0);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const swipeOffset = useRef(0);
+  const suppressClick = useRef(false);
   const { chat } = summary;
   const isSaved = chat.kind === "saved";
   const isChannel = chat.kind === "channel";
@@ -36,7 +43,19 @@ export function ChatListItem({
   return (
     <motion.button
       layout="position"
-      onClick={onClick}
+      onClick={() => { if (!suppressClick.current) onClick(); }}
+      style={{ x: swipeX, touchAction: "pan-y" }}
+      onTouchStart={(event) => { const t = event.touches[0]; touchStart.current = { x: t.clientX, y: t.clientY }; swipeOffset.current = 0; }}
+      onTouchMove={(event) => {
+        if (!touchStart.current || !onArchive) return;
+        const t = event.touches[0]; const dx = t.clientX - touchStart.current.x; const dy = t.clientY - touchStart.current.y;
+        if (dx < 0 && -dx > Math.abs(dy) * 1.3) { swipeOffset.current = Math.max(dx, -100); setSwipeX(swipeOffset.current); }
+      }}
+      onTouchEnd={() => {
+        if (swipeOffset.current < -70 && onArchive) { suppressClick.current = true; onArchive(!archived); navigator.vibrate?.(10); window.setTimeout(() => { suppressClick.current = false; }, 400); }
+        touchStart.current = null; swipeOffset.current = 0; setSwipeX(0);
+      }}
+      onTouchCancel={() => { touchStart.current = null; swipeOffset.current = 0; setSwipeX(0); }}
       whileTap={{ scale: 0.985 }}
       className={`relative flex w-full items-center gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors ${
         active ? "bg-white/[0.09]" : "hover:bg-white/[0.05]"
