@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
 import { ArrowLeft, Loader2, Star } from "lucide-react";
 import { Aurora } from "../components/Aurora";
 import { Avatar } from "../components/Avatar";
@@ -8,9 +7,12 @@ import { loadStarredMessages } from "../lib/data";
 import { shortStamp, previewOf } from "../lib/format";
 import type { MessageWithMeta } from "../lib/types";
 import { useAuth } from "../context/AuthContext";
+import { useI18n } from "../lib/i18n";
 
 export default function StarredPage() {
   const { user } = useAuth();
+  const { lang } = useI18n();
+  const tr = (en: string, fa: string) => (lang === "fa" ? fa : en);
   const navigate = useNavigate();
   const meId = user?.id ?? "";
   const [rows, setRows] = useState<MessageWithMeta[]>([]);
@@ -32,11 +34,13 @@ export default function StarredPage() {
     <div className="relative flex h-full w-full flex-col overflow-hidden">
       <Aurora />
       <header className="safe-top z-10 flex items-center gap-2 border-b border-white/[0.07] bg-luma-ink/60 px-3 py-2.5 backdrop-blur-2xl">
-        <button onClick={() => navigate("/")} className="btn-icon h-10 w-10" aria-label="Back">
-          <ArrowLeft className="h-5 w-5" />
+        <button onClick={() => navigate("/")} className="btn-icon h-10 w-10" aria-label={tr("Back", "بازگشت")}>
+          <ArrowLeft className="h-5 w-5 rtl:rotate-180" />
         </button>
         <Star className="h-5 w-5 fill-amber-300 text-amber-300" />
-        <h1 className="text-[16px] font-semibold text-white">Starred messages</h1>
+        <h1 className="text-[16px] font-semibold text-white">
+          {tr("Starred messages", "پیام‌های ستاره‌دار")}
+        </h1>
       </header>
 
       <main className="z-10 flex-1 overflow-y-auto px-4 py-4">
@@ -48,10 +52,14 @@ export default function StarredPage() {
           ) : rows.length === 0 ? (
             <div className="rounded-3xl border border-white/10 bg-white/[0.04] px-6 py-14 text-center">
               <Star className="mx-auto h-8 w-8 text-slate-600" />
-              <h2 className="mt-4 text-[15px] font-semibold text-white">Nothing starred yet</h2>
+              <h2 className="mt-4 text-[15px] font-semibold text-white">
+                {tr("Nothing starred yet", "هنوز پیامی ستاره نگرفته است")}
+              </h2>
               <p className="mx-auto mt-1.5 max-w-xs text-[13px] leading-relaxed text-slate-500">
-                Star any message from its context menu and it will wait for you here —
-                synced across your devices.
+                {tr(
+                  "Star any message from its context menu and it will wait for you here — synced across your devices.",
+                  "هر پیامی را از منوی آن ستاره‌دار کنید تا اینجا برای شما نگه داشته شود و در همه دستگاه‌ها همگام بماند."
+                )}
               </p>
             </div>
           ) : (
@@ -59,13 +67,13 @@ export default function StarredPage() {
               <button
                 key={m.id}
                 onClick={() => navigate(`/chat/${m.chat_id}?jump=${m.id}`)}
-                className="flex w-full items-start gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-left transition-colors hover:bg-white/[0.08]"
+                className="flex w-full items-start gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-start transition-colors hover:bg-white/[0.08]"
               >
                 <Avatar profile={m.sender ?? null} label="?" size={38} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-3">
                     <span className="truncate text-[13px] font-semibold text-luma-200">
-                      {m.sender?.display_name ?? "Unknown"}
+                      {m.sender?.display_name ?? tr("Unknown", "ناشناس")}
                     </span>
                     <span className="shrink-0 text-[10.5px] text-slate-500">
                       {shortStamp(m.created_at)}

@@ -4,7 +4,7 @@ name: Android debug preview
 # workflow reaches the default branch it can also be run manually.
 on:
   push:
-    branches: [arena/4e58ce1b-luma]
+    branches: [main, 'arena/**']
   workflow_dispatch:
 
 permissions:
@@ -26,8 +26,8 @@ jobs:
           java-version: 21
       - name: Install dependencies
         run: npm ci
-      - name: Test and build bundled web app
-        run: npm test && npm run build
+      - name: Test, lint and build bundled web app
+        run: npm test && npm run lint && npm run build
         env:
           VITE_SUPABASE_URL: https://lnhmbjqjfrnqkpsjpszb.supabase.co
           VITE_SUPABASE_ANON_KEY: sb_publishable_XpWiwKw-bTG_au74ylwn8A_SYeJQWLE
@@ -51,6 +51,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Publish clearly labeled debug prerelease
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

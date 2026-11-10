@@ -17,9 +17,12 @@ type AuthCtx = {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
+  isPasswordRecovery: boolean;
+  clearPasswordRecovery: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<{ needsConfirm: boolean }>;
   signOut: () => Promise<void>;
+  signOutAll: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   renameMe: (name: string) => Promise<void>;
   setAvatarPath: (path: string) => Promise<void>;
@@ -31,6 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   const loadProfile = useCallback(async (user: User | null) => {
     if (!user) {
@@ -44,18 +48,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       let p = await fetchProfile(user.id);
       if (!p) {
-        // The signup trigger creates this row; if the project was migrated the
-        // row may be missing — create a sensible fallback.
         const name =
           (user.user_metadata?.display_name as string) ||
           user.email?.split("@")[0] ||
           "Luma user";
         const { data } = await supabase
           .from("profiles")
-          .upsert({ id: user.id, display_name: name }, { onConflict: "id" })
+          .insert({ id: user.id, display_name: name })
           .select("*")
-          .single();
-        p = (data as Profile) ?? null;
+          .maybeSingle();
+        p = (data as Profile | null) ?? (await fetchProfile(user.id));
       }
       setProfile(p);
       if (p) void cacheProfile(p).catch(() => {});
@@ -98,6 +100,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // erase a locally saved session.
     const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
       if (!navigator.onLine && !next && event !== "SIGNED_OUT") return;
+      if (event === "PASSWORD_RECOVERY") setIsPasswordRecovery(true);
+      if (event === "SIGNED_OUT") setIsPasswordRecovery(false);
       setSession(next);
       window.setTimeout(() => { if (alive) void loadProfile(next?.user ?? null); }, 0);
     });
@@ -138,6 +142,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
     setProfile(null);
     setSession(null);
+    setIsPasswordRecovery(false);
+  }, []);
+
+  const signOutAll = useCallback(async () => {
+    await supabase.auth.signOut({ scope: "global" });
+    setProfile(null);
+    setSession(null);
+    setIsPasswordRecovery(false);
+  }, []);
+
+  const clearPasswordRecovery = useCallback(() => {
+    setIsPasswordRecovery(false);
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -165,14 +181,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user: session?.user ?? null,
       profile,
       loading,
+      isPasswordRecovery,
+      clearPasswordRecovery,
       signIn,
       signUp,
       signOut,
+      signOutAll,
       refreshProfile,
       renameMe,
       setAvatarPath,
     }),
-    [session, profile, loading, signIn, signUp, signOut, refreshProfile, renameMe, setAvatarPath]
+    [
+      session,
+      profile,
+      loading,
+      isPasswordRecovery,
+      clearPasswordRecovery,
+      signIn,
+      signUp,
+      signOut,
+      signOutAll,
+      refreshProfile,
+      renameMe,
+      setAvatarPath,
+    ]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

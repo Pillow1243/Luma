@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import { iceServers, videoTransceiver } from "../lib/calls";
+import { fetchIceServers, iceServers, videoTransceiver } from "../lib/calls";
 import { fetchProfile } from "../lib/data";
 import type { CallParticipant, CallRecord, CallSignal, ChatSummary, Profile } from "../lib/types";
 import { useAuth } from "./AuthContext";
@@ -26,6 +26,7 @@ type Session = {
   seen: Set<string>; chains: Map<string, Promise<void>>;
   screen: MediaStream | null; closed: boolean; timer: number | null; offerers: Set<string>; restarting: Set<string>;
   participantSyncVersion: number; participantSyncApplied: number;
+  servers: RTCIceServer[];
 };
 type CallCtx = { startCall: (chat: ChatSummary, kind: "audio" | "video") => Promise<void>; busy: boolean };
 const Ctx = createContext<CallCtx | null>(null);
@@ -113,7 +114,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const createPeer = useCallback((s: Session, other: string, willOffer = false) => {
     const existing = s.peers.get(other);
     if (existing) return existing;
-    const pc = new RTCPeerConnection({ iceServers: iceServers() });
+    const pc = new RTCPeerConnection({ iceServers: s.servers });
     s.peers.set(other, pc);
     for (const track of s.local.getAudioTracks()) pc.addTrack(track, s.local);
     const video = s.screen?.getVideoTracks()[0] ?? s.local.getVideoTracks()[0];
@@ -248,8 +249,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     for (const signal of (data ?? []) as CallSignal[]) void handleSignal(s, signal);
   }, [cleanup, handleSignal, me, syncParticipants, toast]);
 
-  const makeSession = useCallback((call: CallRecord, stream: MediaStream, title: string): Session => {
-    const s: Session = { call, local: stream, channel: null, peers: new Map(), remote: new Map(), names: new Map(), pendingIce: new Map(), seen: new Set(), chains: new Map(), screen: null, closed: false, timer: null, offerers: new Set(), restarting: new Set(), participantSyncVersion: 0, participantSyncApplied: 0 };
+  const makeSession = useCallback((call: CallRecord, stream: MediaStream, title: string, servers: RTCIceServer[]): Session => {
+    const s: Session = { call, local: stream, channel: null, peers: new Map(), remote: new Map(), names: new Map(), pendingIce: new Map(), seen: new Set(), chains: new Map(), screen: null, closed: false, timer: null, offerers: new Set(), restarting: new Set(), participantSyncVersion: 0, participantSyncApplied: 0, servers };
     sessionRef.current = s;
     setView({ call, title, phase: "calling", local: stream, remote: [], muted: false, cameraOff: call.kind !== "video", sharing: false });
     setBusy(true);
@@ -264,10 +265,17 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     let stream: MediaStream | null = null;
     let s: Session | null = null;
     try {
-      stream = await media(kind);
+      const [mediaStream, ice] = await Promise.all([
+        media(kind),
+        Promise.race([
+          fetchIceServers().then((r) => r.servers),
+          new Promise<RTCIceServer[]>((r) => window.setTimeout(() => r(iceServers()), 1200)),
+        ]),
+      ]);
+      stream = mediaStream;
       const { data, error } = await supabase.rpc("start_luma_call", { cid: summary.chat.id, call_kind: kind });
       if (error) throw error;
-      s = makeSession(data as CallRecord, stream, titleFor(summary, me));
+      s = makeSession(data as CallRecord, stream, titleFor(summary, me), ice);
       summary.participants.forEach((p) => s?.names.set(p.id, p.display_name));
       await connectSession(s);
       await syncParticipants(s);
@@ -288,8 +296,15 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     let stream: MediaStream | null = null;
     let s: Session | null = null;
     try {
-      stream = await media(invite.call.kind);
-      s = makeSession(invite.call, stream, invite.caller?.display_name || "Incoming call");
+      const [mediaStream, ice] = await Promise.all([
+        media(invite.call.kind),
+        Promise.race([
+          fetchIceServers().then((r) => r.servers),
+          new Promise<RTCIceServer[]>((r) => window.setTimeout(() => r(iceServers()), 1200)),
+        ]),
+      ]);
+      stream = mediaStream;
+      s = makeSession(invite.call, stream, invite.caller?.display_name || "Incoming call", ice);
       if (invite.caller) s.names.set(invite.caller.id, invite.caller.display_name);
       setInvitation(null);
       // Listen before responding so the first offer/ICE cannot be missed.

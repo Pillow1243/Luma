@@ -46,6 +46,7 @@ jobs:
         run: |
           ls supabase/migrations/*.sql | sort
           test -f supabase/migrations/20261109000000_luma_v3_1_schema.sql
+          test -f supabase/migrations/20261110120000_luma_security_and_ratchet.sql
 
 # NOTE: the live RLS authorization suite (tests/rls-tests.mjs) runs manually
 # against the production Supabase project — it creates throwaway accounts, so

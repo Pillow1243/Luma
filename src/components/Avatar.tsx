@@ -73,7 +73,7 @@ export function Avatar({
 
       {online && (
         <span
-          className="absolute -bottom-0.5 -right-0.5 block rounded-full border-2 border-luma-ink bg-emerald-400"
+          className="absolute -bottom-0.5 -end-0.5 block rounded-full border-2 border-luma-ink bg-emerald-400"
           style={{ width: Math.max(9, size * 0.26), height: Math.max(9, size * 0.26) }}
         >
           <motion.span

@@ -4,6 +4,7 @@ import { BrowserRouter, HashRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
 import "@fontsource-variable/inter";
+import "@fontsource-variable/vazirmatn";
 
 /**
  * Capacitor serves the bundle from `https://localhost` (or `file://`), where

@@ -1,5 +1,5 @@
 /* Luma service worker — app-shell caching + web push notifications. */
-const VERSION = "luma-v3-offline";
+const VERSION = "luma-v4-offline";
 const PRECACHE = ["/", "/index.html", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 // The first page's scripts are normally requested before a newly installed SW
