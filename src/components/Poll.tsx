@@ -81,8 +81,17 @@ export function PollBlock({ messageId, fallback, meId }: { messageId: string; fa
     const channel = supabase
       .channel(`luma:poll:${poll.id}:${crypto.randomUUID()}`)
       .on(
+        // Subscribe to the identity-free aggregate table, not poll_votes
+        // directly: Realtime enforces each subscriber's own RLS before
+        // delivering postgres_changes events, and poll_votes_read only
+        // exposes a member's own vote row on anonymous polls. That meant
+        // other members never received a change event when someone else
+        // voted anonymously, so their results went stale. poll_vote_counts
+        // is readable by every chat member regardless of anonymity (it
+        // never carries voter identity), so everyone reliably gets notified
+        // to refresh. See supabase/migrations/20261110123641_luma_poll_realtime_fix.sql.
         "postgres_changes",
-        { event: "*", schema: "public", table: "poll_votes", filter: `poll_id=eq.${poll.id}` },
+        { event: "*", schema: "public", table: "poll_vote_counts", filter: `poll_id=eq.${poll.id}` },
         () => { void refreshVotes(poll.id); }
       )
       .subscribe();
