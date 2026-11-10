@@ -85,19 +85,12 @@ jobs:
         run: npm ci
 
       - name: Install contrib extensions (citext, pg_trgm, pgcrypto)
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-contrib-16 || true
-          PGPASSWORD=postgres psql "postgresql://postgres@localhost:55432/postgres" -c "select version();"
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-contrib-16 || true
 
-      - name: Replay migrations (fresh + upgrade must match)
-        run: npm run test:db
-
-      - name: Multi-user authorization suite (RLS / RPC / Storage)
-        run: npm run test:db:security
-
-      - name: Schema parity with production fingerprint
-        run: npm run test:db:parity
+      # GitHub job logs are not reachable from every environment, so a failure
+      # has to explain itself through an annotation instead of a log tail.
+      - name: Database suites (replay + authorization + parity)
+        run: bash scripts/ci-db.sh
 
 # NOTE: the live RLS authorization suite (tests/rls-tests.mjs) runs manually
 # against the production Supabase project — it creates throwaway accounts, so
