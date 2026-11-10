@@ -71,8 +71,12 @@ they are not encrypted and are not guaranteed to work offline.
 - `npm test`, `npm run lint`, `npm run build`, `npm audit`. After building,
   `CHROME_PATH=/path/to/chromium npm run test:browser:calls` exercises real
   local WebRTC media connections with fake devices and a mocked Supabase backend.
-- `supabase/migrations/20261110000000_calls_secret_polls.sql` is the additive
-  migration. Apply it before deploying the frontend.
+- `supabase/migrations/20261110064153_luma_calls_secret_polls.sql` is the additive
+  migration. Apply it before deploying the frontend. The production project
+  already records it as version `20261110064153`. Older migrations in this
+  repository predate the current project history and have different timestamps;
+  reconcile migration history before using `supabase db push` against production,
+  rather than blindly replaying old migrations.
 - Test call acceptance, decline, hangup, groups, screen share, permission
   denial, and relay-only ICE with real browsers/devices and your TURN service.
 - Test sign-in, reload offline, enqueue, restart, reconnect, and account change.

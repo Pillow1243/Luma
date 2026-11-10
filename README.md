@@ -85,7 +85,7 @@ supabase/
     20261109000004_luma_v3_hardening.sql
     20261109000005_luma_v3_cron.sql
     20261109000006_luma_v3_rpc_fixes.sql
-    20261110000000_calls_secret_polls.sql
+    20261110064153_luma_calls_secret_polls.sql
 tests/
   rls-tests.mjs             live authorization suite (manual run)
 ```
