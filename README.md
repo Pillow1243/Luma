@@ -169,7 +169,7 @@ npm run test:db:all      # replay + authorization + production parity
 
 * `npm run test:db` — replays `supabase/baseline/` + every migration on an empty
   and on a pre-populated database and requires an identical result.
-* `npm run test:db:security` — **85** multi-user RLS/RPC/Storage scenarios
+* `npm run test:db:security` — **86** multi-user RLS/RPC/Storage scenarios
   (IDOR, privilege escalation, invites, prekey bundles, push endpoints, polls,
   `anon` access, `search_path`, rate-limit tampering).
 * `npm run test:db:parity` — compares the replayed schema against the captured

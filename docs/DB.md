@@ -13,7 +13,7 @@ exist so that this cannot happen unnoticed.
 | command | what it proves | runs in CI |
 |---|---|---|
 | `npm run test:db` | Replaying `supabase/baseline/` + every migration on an **empty** database and on a database that already has the production baseline ends in the **same** schema (tables, columns, RLS policies, function bodies, privileges). | yes |
-| `npm run test:db:security` | 85 negative multi-user scenarios over RLS, RPC and Storage: IDOR, privilege escalation, invite redemption, prekey bundles, push endpoints, polls, `anon` access, `search_path` pinning, rate-limit tampering. | yes |
+| `npm run test:db:security` | 86 negative multi-user scenarios over RLS, RPC and Storage: IDOR, privilege escalation, invite redemption, prekey bundles, push endpoints, polls, `anon` access, `search_path` pinning, rate-limit tampering. | yes |
 | `npm run test:db:parity` | The replayed schema matches the fingerprint captured from the **hosted project**. | yes |
 
 They need a PostgreSQL server, not Supabase. See
@@ -168,6 +168,7 @@ state at the time of writing.
 | `check_rate_limit` was executable by `authenticated`, so any user could zero their own abuse counters | P2 | reconciled in `20261110120000` + `20261110150000` | **no** — pending |
 | `sync_poll_vote_counts` was executable by `anon` | P3 | `20261110150000` | **no** — pending |
 | group/channel owners could not upload their own avatar (`media_upload` demanded the uploader be a member under their own id) | P2 | `20261110170000_fix_chat_avatar_upload.sql` | **no** — pending |
+| `redeem_invite` counted a use even when it granted nothing (a member re-opening the group's own link), so a `max_uses` invite could be exhausted by people who were already in the chat | P2 | `20261110190000_fix_redeem_invite_uses.sql` | **no** — pending |
 | 8 functions differed between production and the repository (`handle_profile_delete` did not prefer live profiles when transferring chat ownership; `notify_mentions`, `request_join`, `set_group_admin`, `remove_chat_member`, `is_chat_member`, `cleanup_expired_messages` formatting) | P2 | `20261110150000` | **no** — pending |
 
 "Deployed" is stated separately from "merged" on purpose: the migration files

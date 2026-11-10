@@ -3,6 +3,7 @@
   "_policies_note": "Policy expressions cannot be fingerprinted across Postgres versions; tests/db/security.mjs asserts their behaviour instead.",
   "functions": {
     "cleanup_push_log()": "20261110180000_push_log.sql (retention job for push_log)",
+    "redeem_invite(invite_token uuid)": "20261110190000_fix_redeem_invite_uses.sql stops a re-opened invite link consuming a use without granting membership",
     "register_push_subscription(p_endpoint text, p_p256dh text, p_auth text)": "20261110160000_harden_push_registration.sql stops an endpoint being moved to another account (P0 takeover fix)"
   },
   "generated_at": "2026-11-10",

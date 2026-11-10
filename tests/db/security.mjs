@@ -298,6 +298,7 @@ async function scenario(db, label, fn) {
     try { await client.query("rollback"); } catch { /* ignore */ }
     await client.end();
   }
+  if (!ok && process.env.SEC_DEBUG) console.error("DEBUG", label, JSON.stringify(detail));
   results.push({ label, ok, detail });
   console.log(`${ok ? "PASS" : "FAIL"}  ${label}${ok ? "" : `  — ${detail}`}`);
 }
@@ -634,10 +635,38 @@ async function main() {
       await as(c, U.carol);
       const r1 = await allowed(c, `select public.redeem_invite($1)`, [token]);
       const joined = r1.rows[0].redeem_invite === F.group;
-      await c.query("savepoint s2");
-      const second = await denied(c, `select public.redeem_invite($1)`, [token]);
-      await c.query("rollback to savepoint s2");
-      return joined && second;
+      // A *different* user is what the limit protects: the single use is gone.
+      // (Carol re-clicking would be idempotent by design — that is asserted
+      // separately below.)
+      await as(c, U.dave);
+      const other = await denied(c, `select public.redeem_invite($1)`, [token]);
+      await c.query("rollback to savepoint s1");
+      return joined && other;
+    }));
+
+  await scenario(db, "Invite: a member re-opening the link does not consume a use", (c) =>
+    as(c, U.alice).then(async () => {
+      const inv = await allowed(c, `select (public.create_invite($1, 3600, 1)).token as token`, [F.group]);
+      const token = inv.rows[0].token;
+      // Alice created the invite, so she is already a participant: redeeming it
+      // must be a no-op that still returns the chat id.
+      const first = await allowed(c, `select public.redeem_invite($1)`, [token]);
+      const second = await allowed(c, `select public.redeem_invite($1)`, [token]);
+      // Read the counter through a role that can see chat_invites; the row is in
+      // this transaction, so the owner connection must join it.
+      const uses = await c.query(`select uses from chat_invites where token=$1`, [token]).catch(
+        () => ({ rows: [{ uses: -1 }] })
+      );
+      // The single remaining use is still available to a real newcomer.
+      await c.query("savepoint s4");
+      const carol = await (async () => { await as(c, U.carol); return allowed(c, `select public.redeem_invite($1)`, [token]); })();
+      await c.query("rollback to savepoint s4");
+      return (
+        first.rows[0].redeem_invite === F.group &&
+        second.rows[0].redeem_invite === F.group &&
+        uses.rows[0].uses === 0 &&
+        carol.rows[0].redeem_invite === F.group
+      );
     }));
 
   await scenario(db, "Invite: revoked link cannot be redeemed", (c) =>
