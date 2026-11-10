@@ -11,7 +11,7 @@ and a native Android app.
 | | |
 | --- | --- |
 | **Web app** | https://luma-messenger-chi.vercel.app |
-| **Android APK** | [`luma-2.0.0.apk`](https://github.com/Pillow1243/Luma/releases/tag/v2.0.0) (also on GitHub Releases) |
+| **Android APK** | v2.0.0 — `npm run apk` then `gh release upload v2.0.0 release/luma-2.0.0.apk` (see [GitHub Releases](https://github.com/Pillow1243/Luma/releases); the build sandbox cannot reach `uploads.github.com`, so the asset is attached manually) |
 | **Package** | `app.luma.messenger` |
 | **Backend** | Supabase — Postgres + RLS + Realtime + Storage |
 
