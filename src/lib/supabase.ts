@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const url = import.meta.env?.VITE_SUPABASE_URL as string | undefined;
+const key = import.meta.env?.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 if (!url || !key) {
   // Surfaced in the UI instead of a blank white screen.
@@ -14,7 +14,9 @@ export const SUPABASE_URL = url ?? "";
 export const SUPABASE_ANON_KEY = key ?? "";
 export const isSupabaseConfigured = Boolean(url && key);
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+// Keep the client constructible when configuration is absent so the app can
+// render ConfigMissing instead of throwing during module initialization.
+export const supabase = createClient(SUPABASE_URL || "https://missing-config.invalid", SUPABASE_ANON_KEY || "missing-config", {
   auth: {
     persistSession: true,
     autoRefreshToken: true,

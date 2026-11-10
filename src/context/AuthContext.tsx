@@ -10,6 +10,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { fetchProfile, updateProfile } from "../lib/data";
 import type { Profile } from "../lib/types";
+import { cacheProfile, cachedProfile } from "../lib/offline";
 
 type AuthCtx = {
   session: Session | null;
@@ -37,6 +38,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
+      if (!navigator.onLine) {
+        setProfile((await cachedProfile(user.id).catch(() => undefined)) ?? null);
+        return;
+      }
       let p = await fetchProfile(user.id);
       if (!p) {
         // The signup trigger creates this row; if the project was migrated the
@@ -53,9 +58,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         p = (data as Profile) ?? null;
       }
       setProfile(p);
+      if (p) void cacheProfile(p).catch(() => {});
     } catch (err) {
       console.warn("[Luma] profile load failed", err);
-      setProfile(null);
+      setProfile((await cachedProfile(user.id).catch(() => undefined)) ?? null);
     }
   }, []);
 
@@ -66,20 +72,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     let alive = true;
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!alive) return;
-      setSession(data.session);
-      await loadProfile(data.session?.user ?? null);
-      if (alive) setLoading(false);
-    });
+    // Supabase persists the signed session locally. When offline, do not wait
+    // for an expired token refresh before displaying the cached, user-scoped UI.
+    const savedSession = (): Session | null => {
+      try {
+        const value = JSON.parse(localStorage.getItem("luma-auth") ?? "null");
+        return value?.user?.id && value?.access_token ? value as Session : null;
+      } catch { return null; }
+    };
+    if (!navigator.onLine) {
+      const saved = savedSession();
+      setSession(saved);
+      void loadProfile(saved?.user ?? null).finally(() => { if (alive) setLoading(false); });
+    } else {
+      supabase.auth.getSession().then(async ({ data }) => {
+        if (!alive) return;
+        setSession(data.session);
+        await loadProfile(data.session?.user ?? null);
+        if (alive) setLoading(false);
+      }).catch(() => { if (alive) setLoading(false); });
+    }
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, next) => {
+    // Avoid awaiting Supabase requests inside its auth callback; the auth lock
+    // can otherwise deadlock those requests. An offline token refresh must not
+    // erase a locally saved session.
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
+      if (!navigator.onLine && !next && event !== "SIGNED_OUT") return;
       setSession(next);
-      await loadProfile(next?.user ?? null);
+      window.setTimeout(() => { if (alive) void loadProfile(next?.user ?? null); }, 0);
     });
+    const reconnect = () => {
+      void supabase.auth.getSession().then(({ data }) => {
+        if (alive && data.session) { setSession(data.session); void loadProfile(data.session.user); }
+      });
+    };
+    window.addEventListener("online", reconnect);
 
     return () => {
       alive = false;
+      window.removeEventListener("online", reconnect);
       sub.subscription.unsubscribe();
     };
   }, [loadProfile]);

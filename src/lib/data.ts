@@ -617,6 +617,7 @@ export async function hydrateMessages(rows: Message[]): Promise<MessageWithMeta[
 export async function sendMessage(input: {
   chatId: string;
   senderId: string;
+  id?: string;
   body?: string;
   media?: { path: string; name: string; type: string } | null;
   replyTo?: string | null;
@@ -629,6 +630,7 @@ export async function sendMessage(input: {
   const { data, error } = await supabase
     .from("messages")
     .insert({
+      ...(input.id ? { id: input.id } : {}),
       chat_id: input.chatId,
       sender_id: input.senderId,
       body: input.body?.trim() ? input.body.trim() : null,
@@ -644,6 +646,13 @@ export async function sendMessage(input: {
     })
     .select("*")
     .single();
+  // A connection can drop after Postgres commits. Reusing the same UUID makes
+  // retry idempotent; only accept the existing row when it belongs to us.
+  if (error?.code === "23505" && input.id) {
+    const existing = await supabase.from("messages").select("*").eq("id", input.id)
+      .eq("sender_id", input.senderId).eq("chat_id", input.chatId).maybeSingle();
+    if (existing.data) return existing.data as Message;
+  }
   if (error) throw error;
   return data as Message;
 }

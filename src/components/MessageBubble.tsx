@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
@@ -9,6 +10,7 @@ import {
   File as FileIcon,
   Forward,
   Image as ImageIcon,
+  Lock,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -19,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { mediaUrl } from "../lib/data";
+import { decryptSecretText, isSecretBody } from "../lib/secret";
 import {
   bytes,
   isAudio,
@@ -28,6 +31,8 @@ import {
 } from "../lib/format";
 import type { MessageWithMeta, Profile } from "../lib/types";
 import { Avatar } from "./Avatar";
+import { PollBlock } from "./Poll";
+import { GIF_PREFIX, STICKER_PREFIX } from "./StickerPicker";
 
 const QUICK_REACTIONS = ["❤️", "😂", "🔥", "👍", "😮", "🙏", "👏", "💜"];
 const EXTENDED_REACTIONS = [
@@ -59,6 +64,10 @@ export function MessageBubble({
   onToggleStar,
   onJumpTo,
   onReport,
+  onRetry,
+  onDiscard,
+  meId,
+  peerId,
 }: {
   message: MessageWithMeta;
   mine: boolean;
@@ -83,11 +92,18 @@ export function MessageBubble({
   onToggleStar: () => void;
   onJumpTo: (id: string) => void;
   onReport: () => void;
+  onRetry?: () => void;
+  onDiscard?: () => void;
+  meId?: string;
+  peerId?: string | null;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmId, setConfirmId] = useState<"me" | "everyone" | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const swipeOffset = useRef(0);
+  const [swipeX, setSwipeX] = useState(0);
 
   const groupedReactions = message.reactions.reduce<Record<string, number>>((acc, r) => {
     acc[r.emoji] = (acc[r.emoji] ?? 0) + 1;
@@ -96,6 +112,11 @@ export function MessageBubble({
 
   const hasMedia = Boolean(message.media_path);
   const deleted = Boolean(message.deleted_at);
+  const secret = isSecretBody(message.body);
+  const sticker = message.body?.startsWith(STICKER_PREFIX) ? message.body.slice(STICKER_PREFIX.length) : null;
+  const gifId = message.body?.startsWith(GIF_PREFIX) ? message.body.slice(GIF_PREFIX.length) : null;
+  const gif = gifId && /^[a-zA-Z0-9]{1,40}$/.test(gifId) ? gifId : null;
+  const poll = Boolean(message.body?.startsWith("📊 Poll: "));
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -114,6 +135,21 @@ export function MessageBubble({
   return (
     <motion.div
       layout="position"
+      style={{ x: swipeX, touchAction: "pan-y" }}
+      onTouchStart={(event) => {
+        if (message.pending || message.failed || deleted || (event.target as Element).closest("button,a,textarea,audio,video")) return;
+        const t = event.touches[0]; touchStart.current = { x: t.clientX, y: t.clientY }; swipeOffset.current = 0;
+      }}
+      onTouchMove={(event) => {
+        if (!touchStart.current) return;
+        const t = event.touches[0]; const dx = t.clientX - touchStart.current.x; const dy = t.clientY - touchStart.current.y;
+        if (dx > 0 && dx > Math.abs(dy) * 1.3) { swipeOffset.current = Math.min(dx, 90); setSwipeX(swipeOffset.current); }
+      }}
+      onTouchEnd={() => {
+        if (swipeOffset.current > 65) { onReply(); navigator.vibrate?.(10); }
+        touchStart.current = null; swipeOffset.current = 0; setSwipeX(0);
+      }}
+      onTouchCancel={() => { touchStart.current = null; swipeOffset.current = 0; setSwipeX(0); }}
       initial={{ opacity: 0, y: 10, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: "spring", stiffness: 460, damping: 34, mass: 0.6 }}
@@ -158,7 +194,7 @@ export function MessageBubble({
               <span className="font-medium text-luma-200/90">
                 {message.replyTo.sender?.display_name ?? "message"}: 
               </span>
-              {message.replyTo.body?.slice(0, 90) || (message.replyTo.media_path ? "📎 Attachment" : "Message")}
+              {isSecretBody(message.replyTo.body) ? "🔒 Encrypted message" : message.replyTo.body?.slice(0, 90) || (message.replyTo.media_path ? "📎 Attachment" : "Message")}
             </span>
           </button>
         )}
@@ -213,9 +249,13 @@ export function MessageBubble({
                 This message was deleted
               </p>
             ) : (
-              message.body && (
-                <RichText body={message.body} mine={mine} searchQuery={searchQuery} />
-              )
+              message.body && (secret
+                ? <SecretText body={message.body} meId={meId} peerId={peerId} chatId={message.chat_id} senderId={message.sender_id} mine={mine} />
+                : sticker ? <span className="block py-1 text-center text-6xl" role="img" aria-label="Sticker">{sticker}</span>
+                : gif ? <img src={`https://media.giphy.com/media/${gif}/giphy.gif`} alt="GIF from GIPHY" className="max-h-60 w-full max-w-xs rounded-xl" loading="lazy" />
+                : poll && meId ? <PollBlock messageId={message.id} fallback={message.body} meId={meId} />
+                : <RichText body={message.body} mine={mine} searchQuery={searchQuery} />)
+
             )}
 
             <div
@@ -223,6 +263,9 @@ export function MessageBubble({
                 mine ? "text-white/70" : "text-slate-500"
               }`}
             >
+              {secret && <Lock className="h-3 w-3" aria-label="Encrypted text" />}
+              {message.pending && <span>Sending…</span>}
+              {message.failed && <span>Not sent</span>}
               {message.edited_at && !deleted && <span className="italic">edited</span>}
               <span>{timeOfDay(message.created_at)}</span>
               {mine &&
@@ -240,8 +283,11 @@ export function MessageBubble({
             <span className="pointer-events-none absolute inset-0 bg-luma-sheen opacity-60" />
           </div>
 
-          {/* action menu trigger */}
-          <div className="relative mb-0.5" ref={menuRef}>
+          {/* Pending messages are not server rows yet. */}
+          {message.failed ? <div className="flex flex-col gap-1 text-[11px]">
+            <button className="text-luma-200 underline" onClick={onRetry}>Retry</button>
+            <button className="text-slate-400 underline" onClick={onDiscard}>Discard</button>
+          </div> : !message.pending && <div className="relative mb-0.5" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((v) => !v)}
               className="grid h-8 w-8 place-items-center rounded-full text-slate-400 opacity-60 transition-all hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 group-hover/msg:opacity-100"
@@ -263,13 +309,13 @@ export function MessageBubble({
                   {!deleted && (
                     <>
                       <MenuItem icon={<CornerUpLeft className="h-4 w-4" />} label="Reply" onClick={() => { setMenuOpen(false); onReply(); }} />
-                      {message.body && (
+                      {message.body && !secret && !sticker && !gif && !poll && (
                         <MenuItem icon={<Copy className="h-4 w-4" />} label="Copy text" onClick={copyText} />
                       )}
-                      {mine && (
+                      {mine && !secret && !sticker && !gif && !poll && (
                         <MenuItem icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={() => { setMenuOpen(false); onEdit(); }} />
                       )}
-                      <MenuItem icon={<Forward className="h-4 w-4" />} label="Forward" onClick={() => { setMenuOpen(false); onForward(); }} />
+                      {!secret && <MenuItem icon={<Forward className="h-4 w-4" />} label="Forward" onClick={() => { setMenuOpen(false); onForward(); }} />}
                       <MenuItem
                         icon={<Star className={`h-4 w-4 ${starred ? "fill-amber-300 text-amber-300" : ""}`} />}
                         label={starred ? "Unstar" : "Save to Starred"}
@@ -337,8 +383,10 @@ export function MessageBubble({
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
+          </div>}
         </div>
+
+        {message.failed && message.failureReason && <p className="mt-1 max-w-xs text-[10.5px] text-rose-300">{message.failureReason}</p>}
 
         {/* reactions */}
         {Object.keys(groupedReactions).length > 0 && (
@@ -413,6 +461,22 @@ export function MessageBubble({
       </div>
     </motion.div>
   );
+}
+
+function SecretText({ body, meId, peerId, chatId, senderId, mine }: { body: string; meId?: string; peerId?: string | null; chatId: string; senderId: string; mine: boolean }) {
+  const [text, setText] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setText(null); setUnavailable(false);
+    if (!meId || !peerId) { setUnavailable(true); return; }
+    decryptSecretText(meId, peerId, chatId, senderId, body)
+      .then((value) => { if (alive) setText(value); })
+      .catch(() => { if (alive) setUnavailable(true); });
+    return () => { alive = false; };
+  }, [body, meId, peerId, chatId, senderId]);
+  if (text !== null) return <RichText body={text} mine={mine} />;
+  return <span className="italic opacity-75">{unavailable ? "Encrypted message unavailable on this device" : "Decrypting…"}</span>;
 }
 
 function SmilePlusIcon() {
@@ -622,23 +686,15 @@ function MediaBlock({ message }: { message: MessageWithMeta }) {
             loading="lazy"
           />
         </button>
-        {lightbox && (
-          <div
-            className="fixed inset-0 z-[300] grid place-items-center bg-black/85 p-4 backdrop-blur-sm"
-            onClick={() => setLightbox(false)}
-            role="dialog"
-            aria-label="Image viewer"
-          >
-            <img src={url} alt={message.media_name ?? "image"} className="max-h-[88vh] max-w-full rounded-2xl object-contain" />
-            <a
-              href={url}
-              download={message.media_name ?? undefined}
-              className="absolute bottom-6 right-6 flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2 text-sm text-white ring-1 ring-white/20 hover:bg-white/20"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Download className="h-4 w-4" /> Download
-            </a>
-          </div>
+        {lightbox && createPortal(
+          <div className="fixed inset-0 z-[600] grid place-items-center bg-black/90 p-4 backdrop-blur-sm" onClick={() => setLightbox(false)} role="dialog" aria-modal="true" aria-label="Image viewer">
+            <button onClick={() => setLightbox(false)} className="absolute right-5 top-5 z-10 grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white" aria-label="Close image"><X className="h-5 w-5" /></button>
+            <motion.img src={url} alt={message.media_name ?? "image"} className="max-h-[88vh] max-w-full rounded-2xl object-contain" style={{ touchAction: "none" }}
+              drag="y" dragConstraints={{ top: 0, bottom: 0 }} dragElastic={0.4}
+              onDragEnd={(_, info) => { if (info.offset.y > 100 || info.velocity.y > 700) setLightbox(false); }}
+              onClick={(event) => event.stopPropagation()} />
+            <a href={url} download={message.media_name ?? undefined} className="absolute bottom-6 right-6 flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2 text-sm text-white ring-1 ring-white/20 hover:bg-white/20" onClick={(event) => event.stopPropagation()}><Download className="h-4 w-4" /> Download</a>
+          </div>, document.body
         )}
       </>
     );

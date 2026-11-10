@@ -7,6 +7,9 @@ import { Avatar } from "../components/Avatar";
 import { ChatInfoModal } from "../components/ChatInfoModal";
 import { ChatListItem } from "../components/ChatListItem";
 import { ChatWindow } from "../components/ChatWindow";
+import { ConnectionBanner } from "../components/ConnectionBanner";
+import { useOffline } from "../context/OfflineContext";
+import { cacheChats, cachedChats } from "../lib/offline";
 import { LumaMark, LumaWordmark } from "../components/LumaMark";
 import { NotificationsBell } from "../components/NotificationsBell";
 import { NewChatModal } from "../components/NewChatModal";
@@ -14,7 +17,7 @@ import { ProfileModal } from "../components/ProfileModal";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { supabase } from "../lib/supabase";
-import { chatTitle, createSavedChat, loadChats } from "../lib/data";
+import { archiveChat, chatTitle, createSavedChat, loadChats } from "../lib/data";
 import type { ChatSummary } from "../lib/types";
 
 export default function MessengerPage() {
@@ -22,6 +25,7 @@ export default function MessengerPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
+  const { connection } = useOffline();
 
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,12 +45,18 @@ export default function MessengerPage() {
   const refresh = useCallback(
     async (silent = false) => {
       if (!meId) return;
-      if (!silent) setLoading(true);
+      if (!silent) {
+        setLoading(true);
+        const cached = await cachedChats(meId).catch(() => []);
+        if (cached.length) { setChats(cached); setLoading(false); }
+      }
+      if (!navigator.onLine) { setLoading(false); return; }
       try {
         const rows = await loadChats(meId);
         setChats(rows);
+        void cacheChats(meId, rows).catch(() => {});
       } catch (err) {
-        if (!silent) toast.push(err instanceof Error ? err.message : "Could not load chats", "error");
+        if (!silent && navigator.onLine) toast.push(err instanceof Error ? err.message : "Could not load chats; showing saved conversations", "error");
       } finally {
         if (!silent) setLoading(false);
       }
@@ -57,6 +67,8 @@ export default function MessengerPage() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => { if (connection === "online") void refresh(true); }, [connection, refresh]);
 
   /* Keep the sidebar live: new messages, new chats, typing + read receipts. */
   useEffect(() => {
@@ -141,6 +153,13 @@ export default function MessengerPage() {
     }
   }
 
+  async function swipeArchive(chat: ChatSummary, archived: boolean) {
+    if (!navigator.onLine) { toast.push("Connect to archive a conversation", "info"); return; }
+    setChats((rows) => rows.map((c) => c.chat.id === chat.chat.id ? { ...c, archivedAt: archived ? new Date().toISOString() : null } : c));
+    try { await archiveChat(chat.chat.id, meId, archived); toast.push(archived ? "Archived" : "Unarchived", "success"); void refresh(true); }
+    catch { toast.push("Could not update archive", "error"); void refresh(true); }
+  }
+
   function openChat(id: string) {
     navigate(`/chat/${id}`);
     setMobileView("chat");
@@ -156,6 +175,7 @@ export default function MessengerPage() {
           mobileView === "chat" ? "hidden" : "flex"
         } w-full shrink-0 flex-col border-r border-white/[0.07] bg-luma-ink/45 backdrop-blur-2xl lg:flex lg:w-[22.5rem]`}
       >
+        <ConnectionBanner />
         <div className="safe-top px-3 pt-3">
           <div className="flex items-center justify-between gap-2">
             <button onClick={() => setProfileOpen(true)} className="flex items-center gap-2.5 rounded-2xl py-1 pr-2 text-left">
@@ -273,6 +293,7 @@ export default function MessengerPage() {
                   meId={meId}
                   active={savedChat.chat.id === chatId}
                   onClick={() => openChat(savedChat.chat.id)}
+                  onArchive={(archived) => void swipeArchive(savedChat, archived)}
                 />
               )}
               {filteredChats
@@ -284,6 +305,7 @@ export default function MessengerPage() {
                     meId={meId}
                     active={c.chat.id === chatId}
                     onClick={() => openChat(c.chat.id)}
+                    onArchive={(archived) => void swipeArchive(c, archived)}
                   />
                 ))}
             </div>
@@ -301,6 +323,7 @@ export default function MessengerPage() {
           mobileView === "list" ? "hidden" : "flex"
         } min-w-0 flex-1 flex-col lg:flex`}
       >
+        <div className="lg:hidden"><ConnectionBanner /></div>
         <AnimatePresence mode="wait">
           {active ? (
             <motion.div
@@ -379,7 +402,7 @@ function EmptySidebar({ onCreate, filtered, tab }: { onCreate: () => void; filte
       </h3>
       <p className="mt-1 max-w-[15rem] text-[12.5px] leading-relaxed text-slate-500">
         {tab === "archived"
-          ? "Archived chats are tucked away here. Long-press any chat header to archive it."
+          ? "Archived chats are tucked away here. Swipe a conversation left to archive or restore it."
           : filtered
             ? "Try a different search term or folder."
             : "Start a direct message, a group or a channel to see it here."}

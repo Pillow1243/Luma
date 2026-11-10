@@ -7,15 +7,25 @@ import {
   Hash,
   Info,
   Loader2,
+  Lock,
+  LockOpen,
+  MoreHorizontal,
   Pin,
+  Phone,
+  PhoneIncoming,
+  PhoneOutgoing,
+  Video,
   Search,
   Users,
   X,
 } from "lucide-react";
 import { Avatar } from "./Avatar";
+import { Confetti } from "./Confetti";
 import { Composer, type SendPayload } from "./Composer";
 import { MessageBubble, TypingBubble } from "./MessageBubble";
 import { ForwardModal } from "./ForwardModal";
+import { Modal } from "./Modal";
+import { CreatePollModal } from "./Poll";
 import { ReportModal } from "./ReportModal";
 import { supabase } from "../lib/supabase";
 import {
@@ -43,9 +53,15 @@ import {
   validateUpload,
 } from "../lib/data";
 import { relativeDay, shouldShowDayGroup } from "../lib/format";
-import type { ChatSummary, Message, MessageWithMeta, Reaction } from "../lib/types";
+import type { CallRecord, ChatSummary, Message, MessageWithMeta, Reaction } from "../lib/types";
 import { useToast } from "../context/ToastContext";
 import { useTheme } from "../context/ThemeContext";
+import { useOffline } from "../context/OfflineContext";
+import { useAuth } from "../context/AuthContext";
+import { useCalls } from "../context/CallContext";
+import { cacheMessages, cachedMessages } from "../lib/offline";
+import { listCalls } from "../lib/calls";
+import { encryptSecretText, isSecretBody, secretSecurityCode } from "../lib/secret";
 
 export function ChatWindow({
   summary,
@@ -59,6 +75,9 @@ export function ChatWindow({
   onOpenInfo: () => void;
 }) {
   const toast = useToast();
+  const { connection, outbox, enqueue, retry, discard } = useOffline();
+  const { profile } = useAuth();
+  const { startCall, busy: callBusy } = useCalls();
   const chatId = summary.chat.id;
   const kind = summary.chat.kind;
   const isSaved = kind === "saved";
@@ -67,13 +86,18 @@ export function ChatWindow({
   const [searchParams, setSearchParams] = useSearchParams();
   const { wallpaper } = useTheme();
 
+  const [secretMode, setSecretMode] = useState(() => { try { return localStorage.getItem(`luma-secret:${meId}:${chatId}`) === "on"; } catch { return false; } });
+  const [securityCode, setSecurityCode] = useState<string | null>(null);
+  const [pollOpen, setPollOpen] = useState(false);
   const [messages, setMessages] = useState<MessageWithMeta[]>([]);
+  const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [replyTo, setReplyTo] = useState<MessageWithMeta | null>(null);
   const [uploading, setUploading] = useState<{ name: string; size: number } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchFromMe, setSearchFromMe] = useState(false);
   const [searchMediaOnly, setSearchMediaOnly] = useState(false);
@@ -92,6 +116,32 @@ export function ChatWindow({
   const bottomRef = useRef<HTMLDivElement>(null);
   const typingTimer = useRef<number | null>(null);
   const prevScrollHeight = useRef(0);
+  const changes = useRef<{ sequence: number; byId: Map<string, number> }>({ sequence: 0, byId: new Map() });
+  const markChanged = useCallback((id: string) => { changes.current.byId.set(id, ++changes.current.sequence); }, []);
+  const mergeFetched = useCallback((rows: MessageWithMeta[], startedAt: number) => {
+    setMessages((previous) => {
+      const before = new Map(previous.map((m) => [m.id, m]));
+      const fetchedIds = new Set(rows.map((m) => m.id));
+      const merged: MessageWithMeta[] = [];
+      for (const row of rows) {
+        if ((changes.current.byId.get(row.id) ?? 0) > startedAt) {
+          const latest = before.get(row.id);
+          if (latest) merged.push(latest); // preserve an update; omit a deletion
+        } else merged.push(row);
+      }
+      for (const row of previous) if (!fetchedIds.has(row.id) && (changes.current.byId.get(row.id) ?? 0) > startedAt) merged.push(row);
+      return merged.sort((a, b) => a.created_at.localeCompare(b.created_at));
+    });
+  }, []);
+  const confettiTimer = useRef<number | null>(null);
+  const [confetti, setConfetti] = useState(0);
+  const celebrate = useCallback(() => {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    setConfetti((n) => n + 1);
+    if (confettiTimer.current) window.clearTimeout(confettiTimer.current);
+    confettiTimer.current = window.setTimeout(() => setConfetti(0), 3000);
+  }, []);
+  useEffect(() => () => { if (confettiTimer.current) window.clearTimeout(confettiTimer.current); }, []);
 
   const peer = summary.participants.find((p) => p.id !== meId) ?? null;
   const unreadBelow = useMemo(() => {
@@ -108,9 +158,11 @@ export function ChatWindow({
     let alive = true;
     setLoading(true);
     setMessages([]);
+    changes.current = { sequence: 0, byId: new Map() };
     setReplyTo(null);
     setHasMore(true);
     setPinned([]);
+    try { setSecretMode(localStorage.getItem(`luma-secret:${meId}:${chatId}`) === "on"); } catch { setSecretMode(false); }
     setEditingId(null);
     setUnreadCutoff(null);
 
@@ -120,14 +172,22 @@ export function ChatWindow({
       })
       .catch(() => {});
 
-    loadMessages(chatId, { limit: 80 })
-      .then((rows) => {
+    (async () => {
+      const beforeCache = changes.current.sequence;
+      const cached = await cachedMessages(meId, chatId).catch(() => []);
+      if (!alive) return;
+      if (cached.length || !navigator.onLine) { mergeFetched(cached, beforeCache); setLoading(false); }
+      if (!navigator.onLine) { setHasMore(false); return; }
+      try {
+        const beforeFetch = changes.current.sequence;
+        const rows = await loadMessages(chatId, { limit: 80 });
         if (!alive) return;
-        setMessages(rows);
+        mergeFetched(rows, beforeFetch);
         setHasMore(rows.length >= 80);
-      })
-      .catch((err) => alive && toast.push(err.message ?? "Could not load messages", "error"))
-      .finally(() => alive && setLoading(false));
+      } catch (err) {
+        if (alive && !cached.length && navigator.onLine) toast.push((err as Error).message ?? "Could not load messages", "error");
+      } finally { if (alive) setLoading(false); }
+    })();
 
     markRead(chatId, meId).catch(() => {});
     profileHeartbeat(meId).catch(() => {});
@@ -140,6 +200,61 @@ export function ChatWindow({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, meId]);
+
+
+  // Expiring messages disappear even if this chat stays open while offline.
+  useEffect(() => {
+    const timer = window.setInterval(() => setMessages((prev) => {
+      const now = Date.now();
+      const kept = prev.filter((m) => !m.expires_at || Date.parse(m.expires_at) > now);
+      return kept.length === prev.length ? prev : kept;
+    }), 15_000);
+    return () => window.clearInterval(timer);
+  }, [chatId]);
+
+  // Refresh missed changes after reconnecting. Local snapshots only contain
+  // server-confirmed messages; unsent messages live in the durable outbox.
+  useEffect(() => {
+    if (connection !== "online") return;
+    let alive = true;
+    const beforeFetch = changes.current.sequence;
+    loadMessages(chatId, { limit: 80 }).then((rows) => { if (alive) mergeFetched(rows, beforeFetch); }).catch(() => {});
+    return () => { alive = false; };
+  }, [connection, chatId]);
+  useEffect(() => {
+    if (!loading) void cacheMessages(meId, chatId, messages).catch(() => {});
+  }, [meId, chatId, messages, loading]);
+  useEffect(() => {
+    const sent = (event: Event) => {
+      const row = (event as CustomEvent<MessageWithMeta>).detail;
+      if (row.chat_id !== chatId) return;
+      markChanged(row.id);
+      setMessages((prev) => prev.some((m) => m.id === row.id) ? prev.map((m) => m.id === row.id ? row : m) : [...prev, row]);
+    };
+    window.addEventListener("luma:outbox-sent", sent);
+    return () => window.removeEventListener("luma:outbox-sent", sent);
+  }, [chatId]);
+  const allMessages = useMemo(() => {
+    const ids = new Set(messages.map((m) => m.id));
+    const pending: MessageWithMeta[] = outbox.filter((item) => item.chatId === chatId && !ids.has(item.id)).map((item) => ({
+      id: item.id, chat_id: chatId, sender_id: meId, body: item.body, reply_to: item.replyTo,
+      media_path: null, media_name: null, media_type: null, created_at: item.createdAt,
+      edited_at: null, deleted_at: null, pinned_at: null, forwarded_from: null, expires_at: item.expiresAt,
+      mentions: item.mentions, media_duration: null, media_waveform: null,
+      sender: profile ?? undefined, reactions: [], pending: item.status === "queued", failed: item.status === "failed", failureReason: item.error,
+      replyTo: messages.find((m) => m.id === item.replyTo) ?? null,
+    }));
+    return [...messages, ...pending].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }, [messages, outbox, chatId, meId, profile]);
+
+  useEffect(() => {
+    let alive = true;
+    const refreshCalls = () => { if (navigator.onLine) void listCalls(chatId).then((rows) => { if (alive) setCallHistory(rows); }).catch(() => {}); };
+    refreshCalls();
+    const channel = supabase.channel(`luma:call-history:${chatId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `chat_id=eq.${chatId}` }, refreshCalls).subscribe();
+    return () => { alive = false; void supabase.removeChannel(channel); };
+  }, [chatId, connection]);
 
   /* ------------------------- read receipts (peer) ------------------------ */
   useEffect(() => {
@@ -179,11 +294,13 @@ export function ChatWindow({
         { event: "INSERT", schema: "public", table: "messages", filter: `chat_id=eq.${chatId}` },
         async (payload) => {
           const row = payload.new as Message;
+          markChanged(row.id);
           const [hydrated] = await hydrateMessages([row]);
           setMessages((prev) =>
             prev.some((m) => m.id === row.id) ? prev : [...prev, hydrated]
           );
           if (row.sender_id !== meId) {
+            if (row.body?.trim() === "🎉") celebrate();
             markRead(chatId, meId).catch(() => {});
           }
         }
@@ -193,6 +310,7 @@ export function ChatWindow({
         { event: "UPDATE", schema: "public", table: "messages", filter: `chat_id=eq.${chatId}` },
         (payload) => {
           const row = payload.new as Message & { deleted_for?: string[] };
+          markChanged(row.id);
           // Deletion for me should remove it from my list.
           if (row.deleted_for?.includes(meId)) {
             setMessages((prev) => prev.filter((m) => m.id !== row.id));
@@ -215,7 +333,7 @@ export function ChatWindow({
         { event: "DELETE", schema: "public", table: "messages" },
         (payload) => {
           const old = payload.old as { id?: string };
-          if (old?.id) setMessages((prev) => prev.filter((m) => m.id !== old.id));
+          if (old?.id) { markChanged(old.id); setMessages((prev) => prev.filter((m) => m.id !== old.id)); }
         }
       )
       .on(
@@ -224,6 +342,7 @@ export function ChatWindow({
         (payload) => {
           const row = (payload.new ?? payload.old) as Reaction;
           if (!row?.message_id) return;
+          markChanged(row.message_id);
           setMessages((prev) =>
             prev.map((m) => {
               if (m.id !== row.message_id) return m;
@@ -321,6 +440,7 @@ export function ChatWindow({
   const onTyping = useCallback(
     (isTyping: boolean) => {
       if (typingTimer.current) window.clearTimeout(typingTimer.current);
+      if (secretMode || !navigator.onLine) return;
       setTyping(chatId, meId, isTyping).catch(() => {});
       if (isTyping) {
         typingTimer.current = window.setTimeout(() => {
@@ -328,49 +448,48 @@ export function ChatWindow({
         }, 5000);
       }
     },
-    [chatId, meId]
+    [chatId, meId, secretMode]
   );
 
   /* -------------------------------- sending ------------------------------ */
-  async function handleSend({ body, mentions }: SendPayload) {
-    const tempId = `temp-${Date.now()}`;
-    const optimistic: MessageWithMeta = {
-      id: tempId,
-      chat_id: chatId,
-      sender_id: meId,
-      body,
-      reply_to: replyTo?.id ?? null,
-      media_path: null,
-      media_name: null,
-      media_type: null,
-      created_at: new Date().toISOString(),
-      edited_at: null,
-      deleted_at: null,
-      pinned_at: null,
-      forwarded_from: null,
-      expires_at: null,
-      mentions,
-      media_duration: null,
-      media_waveform: null,
-      reactions: [],
-      pending: true,
-      replyTo: replyTo ?? null,
-    };
-    setMessages((prev) => [...prev, optimistic]);
-    const reply = replyTo?.id ?? null;
-    setReplyTo(null);
-    requestAnimationFrame(() => scrollToBottom());
-
+  async function handleSend({ body, mentions }: SendPayload): Promise<boolean> {
     try {
-      const saved = await sendMessage({ chatId, senderId: meId, body, replyTo: reply, mentions });
-      const [hydrated] = await hydrateMessages([saved]);
-      setMessages((prev) => prev.map((m) => (m.id === tempId ? hydrated : m)));
+      let outgoing = body;
+      let expiresAt: string | null = null;
+      if (secretMode) {
+        if (!peer || kind !== "direct") throw new Error("Secret text is available in direct chats only.");
+        outgoing = await encryptSecretText(meId, peer.id, chatId, body);
+        expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      } else if (body.length > 5000) throw new Error("Messages are limited to 5000 characters.");
+      await enqueue({ chatId, body: outgoing, replyTo: replyTo?.id ?? null, mentions: secretMode ? [] : mentions, expiresAt });
+      if (body.trim() === "🎉") celebrate();
+      setReplyTo(null);
+      requestAnimationFrame(() => scrollToBottom());
+      return true;
     } catch (err) {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? { ...m, pending: false, failed: true } : m))
-      );
-      toast.push(err instanceof Error ? err.message : "Message failed to send", "error");
+      toast.push((err as Error).message || "Could not save the message on this device", "error");
+      return false;
     }
+  }
+
+  async function toggleSecret() {
+    if (!peer || kind !== "direct") return;
+    if (secretMode) {
+      localStorage.removeItem(`luma-secret:${meId}:${chatId}`);
+      setSecretMode(false);
+      return;
+    }
+    try {
+      await secretSecurityCode(meId, peer.id, chatId);
+      localStorage.setItem(`luma-secret:${meId}:${chatId}`, "on");
+      setSecretMode(true);
+      toast.push("Secret text on. Compare security codes with your contact.", "success");
+    } catch (error) { toast.push((error as Error).message || "Could not enable secret text", "error"); }
+  }
+  async function verifySecret() {
+    if (!peer) return;
+    try { setSecurityCode(await secretSecurityCode(meId, peer.id, chatId)); }
+    catch (error) { toast.push((error as Error).message || "Could not load the security code", "error"); }
   }
 
   async function handleVoice(blob: Blob, durationSec: number) {
@@ -609,9 +728,15 @@ export function ChatWindow({
 
   const filtered = useMemo(() => {
     if (serverResults) return serverResults.slice().reverse();
-    return messages;
-  }, [messages, serverResults]);
+    return allMessages;
+  }, [allMessages, serverResults]);
 
+  const timeline = useMemo(() => {
+    const items: ({ type: "message"; at: string; message: MessageWithMeta } | { type: "call"; at: string; call: CallRecord })[] =
+      filtered.map((message) => ({ type: "message" as const, at: message.created_at, message }));
+    if (!serverResults && !searchTerm && !searchMediaOnly) items.push(...callHistory.map((call) => ({ type: "call" as const, at: call.created_at, call })));
+    return items.sort((a, b) => a.at.localeCompare(b.at));
+  }, [filtered, callHistory, serverResults, searchTerm, searchMediaOnly]);
   const canModerate = summary.isAdmin;
 
   const headerSubtitle = summary.typing.length > 0
@@ -636,8 +761,9 @@ export function ChatWindow({
 
   return (
     <section className="relative flex h-full min-w-0 flex-1 flex-col">
+      {confetti > 0 && <Confetti key={confetti} />}
       {/* ------------------------------- header ------------------------------ */}
-      <header className="safe-top z-20 flex items-center gap-2 border-b border-white/[0.07] bg-luma-ink/60 px-2.5 py-2.5 backdrop-blur-2xl sm:px-4">
+      <header className="safe-top z-20 flex items-center gap-1 border-b border-white/[0.07] bg-luma-ink/60 px-2.5 py-2.5 backdrop-blur-2xl sm:px-4">
         <button onClick={onBack} className="btn-icon lg:hidden" aria-label="Back">
           <ArrowLeft className="h-5 w-5" />
         </button>
@@ -674,17 +800,31 @@ export function ChatWindow({
           </div>
         </button>
 
+        {kind === "direct" && <button onClick={() => void toggleSecret()} className={`btn-icon h-10 w-10 ${secretMode ? "text-emerald-300" : ""}`} aria-label={secretMode ? "Turn secret text off" : "Turn secret text on"} title={secretMode ? "Secret text on" : "Enable secret text"}>{secretMode ? <Lock className="h-[18px] w-[18px]" /> : <LockOpen className="h-[18px] w-[18px]" />}</button>}
+        {(kind === "direct" || kind === "group") && <>
+          <button onClick={() => void startCall(summary, "audio")} disabled={callBusy} className="btn-icon h-10 w-10 disabled:opacity-40" aria-label="Start audio call" title="Audio call"><Phone className="h-[18px] w-[18px]" /></button>
+          <button onClick={() => void startCall(summary, "video")} disabled={callBusy} className="btn-icon h-10 w-10 disabled:opacity-40" aria-label="Start video call" title="Video call"><Video className="h-[18px] w-[18px]" /></button>
+        </>}
         <button
           onClick={() => setSearchOpen((v) => !v)}
-          className="btn-icon h-10 w-10"
+          className="btn-icon hidden h-10 w-10 sm:grid"
           aria-label="Search messages"
         >
           <Search className="h-[18px] w-[18px]" />
         </button>
-        <button onClick={onOpenInfo} className="btn-icon h-10 w-10" aria-label="Chat info">
+        <button onClick={onOpenInfo} className="btn-icon hidden h-10 w-10 sm:grid" aria-label="Chat info">
           <Info className="h-[18px] w-[18px]" />
         </button>
+        <div className="relative sm:hidden">
+          <button onClick={() => setHeaderMenuOpen((v) => !v)} className="btn-icon h-9 w-9" aria-label="More chat options" aria-expanded={headerMenuOpen}><MoreHorizontal className="h-[18px] w-[18px]" /></button>
+          {headerMenuOpen && <div className="absolute right-0 top-11 z-50 w-44 rounded-2xl border border-white/10 bg-luma-panel p-1.5 shadow-2xl">
+            <button onClick={() => { setHeaderMenuOpen(false); setSearchOpen((v) => !v); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs text-slate-200 hover:bg-white/10"><Search className="h-4 w-4" /> Search messages</button>
+            <button onClick={() => { setHeaderMenuOpen(false); onOpenInfo(); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs text-slate-200 hover:bg-white/10"><Info className="h-4 w-4" /> Chat info</button>
+          </div>}
+        </div>
       </header>
+
+      {secretMode && <div className="flex flex-wrap items-center justify-center gap-x-2 border-b border-emerald-400/15 bg-emerald-500/[.08] px-3 py-2 text-center text-[11px] text-emerald-200"><Lock className="h-3 w-3" /> Secret text on · text only · expires after 24h <button onClick={() => void verifySecret()} className="font-semibold underline underline-offset-2">Verify security code</button></div>}
 
       {/* pinned bar */}
       {pinnedLatest && (
@@ -695,7 +835,7 @@ export function ChatWindow({
           <Pin className="h-3.5 w-3.5 shrink-0 fill-luma-300 text-luma-300" />
           <span className="min-w-0 flex-1 truncate text-[12px] text-luma-100">
             <span className="font-semibold">Pinned:</span>{" "}
-            {pinnedLatest.body || (pinnedLatest.media_path ? "📎 Attachment" : "Message")}
+            {isSecretBody(pinnedLatest.body) ? "🔒 Encrypted message" : pinnedLatest.body || (pinnedLatest.media_path ? "📎 Attachment" : "Message")}
           </span>
           {pinned.length > 1 && (
             <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10.5px] text-luma-100">
@@ -767,7 +907,7 @@ export function ChatWindow({
           <div className="flex h-full items-center justify-center text-slate-500">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : timeline.length === 0 ? (
           <EmptyChat kind={kind} name={summary.chat.name} searching={Boolean(searchTerm || searchMediaOnly)} />
         ) : (
           <>
@@ -778,11 +918,22 @@ export function ChatWindow({
                 </button>
               </div>
             )}
-            {filtered.map((message, i) => {
-              const prev = filtered[i - 1];
-              const showDay = shouldShowDayGroup(message.created_at, prev?.created_at);
-              const grouped =
-                !showDay && prev?.sender_id === message.sender_id && !message.reply_to;
+            {timeline.map((item, i) => {
+              const previous = timeline[i - 1];
+              const showDay = shouldShowDayGroup(item.at, previous?.at);
+              if (item.type === "call") {
+                const call = item.call;
+                const outgoing = call.started_by === meId;
+                const duration = call.answered_at && call.ended_at ? Math.max(0, Math.round((Date.parse(call.ended_at) - Date.parse(call.answered_at)) / 1000)) : null;
+                const label = call.status !== "ended" ? "Ongoing" : !call.answered_at ? outgoing ? "Unanswered" : "Missed" : outgoing ? "Outgoing" : "Incoming";
+                return <div key={`call-${call.id}`}>
+                  {showDay && <div className="my-4 flex justify-center"><span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-[10.5px] uppercase tracking-wider text-slate-400">{relativeDay(item.at)}</span></div>}
+                  <div className="my-3 flex justify-center"><span className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[11px] text-slate-300">{outgoing ? <PhoneOutgoing className="h-3.5 w-3.5 text-luma-300" /> : <PhoneIncoming className="h-3.5 w-3.5 text-luma-300" />}{label} {call.kind} call{duration != null ? ` · ${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}` : ""}</span></div>
+                </div>;
+              }
+              const message = item.message;
+              const prev = previous?.type === "message" ? previous.message : undefined;
+              const grouped = !showDay && prev?.sender_id === message.sender_id && !message.reply_to;
               const mine = message.sender_id === meId;
               const read = Boolean(
                 peerReadAt && new Date(peerReadAt).getTime() >= new Date(message.created_at).getTime()
@@ -830,6 +981,10 @@ export function ChatWindow({
                     onToggleStar={() => handleToggleStar(message)}
                     onJumpTo={jumpTo}
                     onReport={() => setReportTarget(message)}
+                    onRetry={() => void retry(message.id)}
+                    onDiscard={() => void discard(message.id)}
+                    meId={meId}
+                    peerId={kind === "direct" ? peer?.id : null}
                   />
                 </div>
               );
@@ -869,7 +1024,10 @@ export function ChatWindow({
           onCancelReply={() => setReplyTo(null)}
           uploading={uploading}
           onFiles={handleFiles}
-          placeholder={isChannel ? "Broadcast to subscribers…" : isSaved ? "Write to yourself…" : "Message…"}
+          canUpload={connection === "online" && !secretMode}
+          secret={secretMode}
+          onCreatePoll={() => setPollOpen(true)}
+          placeholder={secretMode ? "Encrypted text…" : isChannel ? "Broadcast to subscribers…" : isSaved ? "Write to yourself…" : "Message…"}
         />
       ) : (
         <div className="border-t border-white/[0.07] bg-luma-ink/55 px-4 py-4 text-center backdrop-blur-2xl">
@@ -879,6 +1037,11 @@ export function ChatWindow({
         </div>
       )}
 
+      <CreatePollModal open={pollOpen} onClose={() => setPollOpen(false)} chatId={chatId} onCreated={() => { void loadMessages(chatId, { limit: 80 }).then(setMessages).catch(() => {}); }} />
+      <Modal open={securityCode !== null} onClose={() => setSecurityCode(null)} title="Verify security code" subtitle="Compare this code with your contact in person or over a trusted channel.">
+        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-5 text-center font-mono text-lg font-semibold tracking-wider text-emerald-100">{securityCode}</div>
+        <p className="mt-4 text-[12px] leading-relaxed text-slate-400">Both codes must match. Secret text is experimental and device-bound: it does not encrypt attachments, existing messages or metadata, and has no key backup or forward secrecy. A new device cannot recover these messages.</p>
+      </Modal>
       <ForwardModal
         open={Boolean(forwardSource)}
         onClose={() => setForwardSource(null)}

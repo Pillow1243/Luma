@@ -70,6 +70,9 @@ export function bytes(size: number): string {
 }
 
 export function previewOf(body: string | null, hasMedia: boolean, mediaName?: string | null): string {
+  if (body?.startsWith("luma:e2ee:v1:")) return "🔒 Encrypted message";
+  if (body?.startsWith("luma:sticker:v1:")) return "✨ Sticker";
+  if (body?.startsWith("luma:gif:v1:")) return "GIF";
   if (body && body.trim()) return body.trim().replace(/\s+/g, " ");
   if (hasMedia) return mediaName ? `📎 ${mediaName}` : "📎 Attachment";
   return "No messages yet";

@@ -1,8 +1,8 @@
 {
   "name": "luma",
   "private": true,
-  "version": "1.0.0",
-  "description": "Luma — a premium, glassmorphic realtime messenger.",
+  "version": "2.1.0",
+  "description": "Luma \u2014 a premium, glassmorphic realtime messenger.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -16,31 +16,35 @@
     "keystore": "node scripts/make-keystore.mjs",
     "icons": "python3 scripts/make-icons.py && python3 scripts/make-shell-res.py",
     "apk": "node scripts/build-apk.mjs",
-    "release": "npm run build && npm run apk"
+    "release": "npm run build && npm run apk",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@supabase/supabase-js": "^2.45.4",
     "date-fns": "^4.1.0",
     "framer-motion": "^11.11.9",
+    "idb": "^8.0.4",
     "lucide-react": "^0.454.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.27.0"
+    "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
-    "@capacitor/android": "^6.1.2",
-    "@capacitor/cli": "^6.1.2",
-    "@capacitor/core": "^6.1.2",
+    "@capacitor/android": "^7.6.10",
+    "@capacitor/cli": "^7.6.10",
+    "@capacitor/core": "^7.6.10",
     "@drxiaozhi/minapk": "0.5.1",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
     "aaptjs3": "2.0.2",
     "autoprefixer": "^10.4.20",
+    "fake-indexeddb": "^6.2.8",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.3",
-    "vite": "^5.4.9"
+    "vite": "^6.4.6"
   }
 }

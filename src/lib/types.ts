@@ -84,6 +84,7 @@ export type MessageWithMeta = Message & {
   replyTo?: MessageWithMeta | null;
   pending?: boolean;
   failed?: boolean;
+  failureReason?: string;
 };
 
 export type Invite = {
@@ -133,4 +134,18 @@ export type SearchFilters = {
   fromMe?: boolean;
   mediaOnly?: boolean;
   senderId?: string | null;
+};
+
+export type CallRecord = {
+  id: string; chat_id: string; started_by: string; kind: "audio" | "video";
+  status: "ringing" | "active" | "ended"; created_at: string;
+  answered_at: string | null; ended_at: string | null;
+};
+export type CallParticipant = {
+  call_id: string; user_id: string; status: "ringing" | "joined" | "declined" | "left" | "missed";
+  joined_at: string | null; left_at: string | null;
+};
+export type CallSignal = {
+  id: string; call_id: string; from_user: string; to_user: string;
+  kind: "offer" | "answer" | "ice"; payload: RTCSessionDescriptionInit | RTCIceCandidateInit;
 };
