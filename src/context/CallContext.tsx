@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import { iceServers } from "../lib/calls";
+import { iceServers, videoTransceiver } from "../lib/calls";
 import { fetchProfile } from "../lib/data";
 import type { CallParticipant, CallRecord, CallSignal, ChatSummary, Profile } from "../lib/types";
 import { useAuth } from "./AuthContext";
@@ -105,7 +105,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     if (s.closed || sessionRef.current !== s) return;
     setView((v) => v ? { ...v, remote: [...s.remote].map(([userId, stream]) => ({ userId, stream, name: s.names.get(userId) || "Participant" })), phase: s.remote.size ? "active" : v.phase } : v);
   }, []);
-  const createPeer = useCallback((s: Session, other: string) => {
+  const createPeer = useCallback((s: Session, other: string, willOffer = false) => {
     const existing = s.peers.get(other);
     if (existing) return existing;
     const pc = new RTCPeerConnection({ iceServers: iceServers() });
@@ -113,7 +113,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     for (const track of s.local.getAudioTracks()) pc.addTrack(track, s.local);
     const video = s.screen?.getVideoTracks()[0] ?? s.local.getVideoTracks()[0];
     if (video) pc.addTrack(video, s.screen ?? s.local);
-    else pc.addTransceiver("video", { direction: "sendrecv" });
+    // Only the offerer creates a spare video media section for an audio call.
+    // On the answering side the remote offer creates the associated section;
+    // an eagerly-added transceiver would remain unassociated (MID is null).
+    else if (willOffer) pc.addTransceiver("video", { direction: "sendrecv" });
     pc.onicecandidate = (e) => { if (e.candidate) void sendSignal(s, other, "ice", e.candidate.toJSON()); };
     pc.ontrack = (e) => {
       let stream = s.remote.get(other);
@@ -156,6 +159,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         else s.pendingIce.set(signal.from_user, [...(s.pendingIce.get(signal.from_user) ?? []), candidate]);
       } else {
         await pc.setRemoteDescription(signal.payload as RTCSessionDescriptionInit);
+        if (signal.kind === "offer") {
+          // Keep the negotiated video m-line bidirectional even for an audio
+          // call, so either participant can later share without renegotiation.
+          const video = videoTransceiver(pc);
+          if (video) {
+            video.direction = "sendrecv";
+            const track = s.screen?.getVideoTracks()[0] ?? s.local.getVideoTracks()[0] ?? null;
+            if (video.sender.track !== track) await video.sender.replaceTrack(track);
+          }
+        }
         for (const candidate of s.pendingIce.get(signal.from_user) ?? []) await pc.addIceCandidate(candidate).catch(() => {});
         s.pendingIce.delete(signal.from_user);
         if (signal.kind === "offer") {
@@ -192,7 +205,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       // including when two group members accept at nearly the same instant.
       const earlier = `${self.joined_at}:${me}` < `${other.joined_at}:${other.user_id}`;
       if (earlier && !s.peers.has(other.user_id) && !s.closed) {
-        const pc = createPeer(s, other.user_id);
+        const pc = createPeer(s, other.user_id, true);
         s.offerers.add(other.user_id);
         try {
           const offer = await pc.createOffer();
@@ -330,29 +343,34 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const stopShare = useCallback(async (s: Session) => {
     const old = s.screen; s.screen = null;
     const camera = s.local.getVideoTracks()[0] ?? null;
-    await Promise.all([...s.peers.values()].map(async (pc) => {
-      const sender = pc.getTransceivers().find((t) => t.sender.track?.kind === "video" || t.receiver.track.kind === "video")?.sender;
-      await sender?.replaceTrack(camera);
+    const results = await Promise.allSettled([...s.peers.values()].map(async (pc) => {
+      await videoTransceiver(pc)?.sender.replaceTrack(camera);
     }));
     old?.getTracks().forEach((t) => t.stop());
+    if (results.some((result) => result.status === "rejected")) console.warn("[Luma] could not restore one video track");
     if (!s.closed) setView((v) => v ? { ...v, sharing: false } : v);
   }, []);
   const toggleShare = useCallback(async () => {
     const s = sessionRef.current; if (!s) return;
     if (s.screen) { await stopShare(s); return; }
     if (!navigator.mediaDevices?.getDisplayMedia) { toast.push("Screen sharing isn't supported on this device", "info"); return; }
+    let screen: MediaStream | null = null;
     try {
-      const screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
       if (s.closed) { screen.getTracks().forEach((t) => t.stop()); return; }
-      s.screen = screen;
       const track = screen.getVideoTracks()[0];
+      if (!track) throw new Error("No screen video was selected.");
+      s.screen = screen;
       track.onended = () => { void stopShare(s); };
       await Promise.all([...s.peers.values()].map(async (pc) => {
-        const sender = pc.getTransceivers().find((t) => t.sender.track?.kind === "video" || t.receiver.track.kind === "video")?.sender;
-        await sender?.replaceTrack(track);
+        await videoTransceiver(pc)?.sender.replaceTrack(track);
       }));
       setView((v) => v ? { ...v, sharing: true } : v);
-    } catch (error) { if ((error as { name?: string }).name !== "NotAllowedError") toast.push(describeError(error), "error"); }
+    } catch (error) {
+      if (screen && s.screen === screen) await stopShare(s);
+      else screen?.getTracks().forEach((t) => t.stop());
+      if ((error as { name?: string }).name !== "NotAllowedError") toast.push(describeError(error), "error");
+    }
   }, [stopShare, toast]);
 
   const value = useMemo(() => ({ startCall, busy }), [startCall, busy]);

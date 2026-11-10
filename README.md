@@ -138,7 +138,7 @@ Env vars:
 ## Build
 
 ```bash
-npm test          # IndexedDB, crypto and idempotency tests
+npm test          # IndexedDB, crypto, call and idempotency unit tests
 npm run build     # typecheck + production bundle → dist/
 npm run preview   # serve the production bundle
 ```

@@ -33,6 +33,12 @@ jobs:
           VITE_SUPABASE_ANON_KEY: sb_publishable_XpWiwKw-bTG_au74ylwn8A_SYeJQWLE
           VITE_APP_URL: https://luma-messenger-chi.vercel.app
 
+      - name: WebRTC browser smoke test (mock backend)
+        run: npm run test:browser:calls
+        timeout-minutes: 5
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+
       - name: Check migrations are present
         run: |
           ls supabase/migrations/*.sql | sort

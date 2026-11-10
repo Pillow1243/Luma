@@ -68,13 +68,15 @@ they are not encrypted and are not guaranteed to work offline.
 
 ## Verification
 
-- `npm test`, `npm run lint`, `npm run build`, `npm audit`.
+- `npm test`, `npm run lint`, `npm run build`, `npm audit`. After building,
+  `CHROME_PATH=/path/to/chromium npm run test:browser:calls` exercises real
+  local WebRTC media connections with fake devices and a mocked Supabase backend.
 - `supabase/migrations/20261110000000_calls_secret_polls.sql` is the additive
   migration. Apply it before deploying the frontend.
 - Test call acceptance, decline, hangup, groups, screen share, permission
   denial, and relay-only ICE with real browsers/devices and your TURN service.
 - Test sign-in, reload offline, enqueue, restart, reconnect, and account change.
 - The current test suite validates crypto round trips and tamper detection,
-  IndexedDB account isolation and expiry, and idempotent message retries. A
-  browser smoke test can use mocked Supabase traffic; it is not a substitute
-  for a real two-device/network/security test.
+  IndexedDB account isolation and expiry, idempotent message retries, and
+  browser call/screen-share smoke tests with mocked Supabase traffic. These are
+  not a substitute for a real two-device/network/security test.
