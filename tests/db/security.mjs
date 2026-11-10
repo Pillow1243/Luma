@@ -78,6 +78,7 @@ async function rebuild() {
   await c.query(`create database ${pg.escapeIdentifier(DB)}`);
   await c.end();
 
+  const client = await adminClient();
   const have = await probeExtensions(() => adminClient());
 
   const files = [

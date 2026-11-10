@@ -34,28 +34,38 @@ const dependent = {
 /**
  * Probe which optional modules a server can actually install.
  *
- * Runs on its own connection so that a failure cannot abort the caller's
- * transaction, and returns the set of module names that install cleanly.
+ * Each probe runs in its own transaction and is rolled back. That detail is
+ * load-bearing: `create extension if not exists` is a no-op once the module is
+ * installed *anywhere* in the database, so a plain probe would silently install
+ * pg_trgm into the default schema and then make the migration's
+ * `create extension if not exists pg_trgm schema extensions` a no-op too —
+ * leaving `extensions.gin_trgm_ops` unresolvable and the migration failing.
+ *
+ * A failed CREATE EXTENSION aborts its transaction, so every probe needs its
+ * own connection (or at least its own explicit rollback).
  */
 export async function probeExtensions(adminClient) {
   const have = new Set();
-  const names = ["citext", "pgcrypto", "pg_trgm", "pg_cron"];
-  for (const name of names) {
-    const c = await adminClient(); // fresh connection, discarded either way
-    const ok = await (async () => {
-      try {
-        // Installed globally these extensions are cluster-wide, so probing is
-        // safe even when the extension already sits in another schema.
-        await c.query(`create extension if not exists ${name}`);
-        return true;
-      } catch {
-        return false;
-      }
-    })();
-    try { await c.end(); } catch { /* ignore */ }
-    if (ok) have.add(name);
+  for (const name of ["citext", "pgcrypto", "pg_trgm", "pg_cron"]) {
+    if (await canInstall(adminClient, name)) have.add(name);
   }
   return have;
+}
+
+async function canInstall(adminClient, name) {
+  let c;
+  try {
+    c = await adminClient();
+    await c.query("begin");
+    await c.query(`create extension if not exists ${name}`);
+    await c.query("rollback");
+    return true;
+  } catch {
+    try { await c?.query("rollback"); } catch { /* connection already aborted */ }
+    return false;
+  } finally {
+    try { await c?.end(); } catch { /* ignore */ }
+  }
 }
 
 /**
