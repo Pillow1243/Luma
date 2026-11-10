@@ -32,18 +32,26 @@ LUMA_SERVER_URL=http://10.0.2.2:5173 npx cap sync android
 `aapt2`, `d8`, `ecj` and `apksigner` — no Gradle, no Google Maven, no AndroidX.
 
 ```bash
-npm run apk            # → release/luma-1.0.0.apk  (release-signed)
-npm run apk -- --debug # → release/luma-1.0.0-debug.apk
+npm run apk            # → release/luma-2.0.0.apk  (release-signed)
+npm run apk -- --debug # → release/luma-2.0.0-debug.apk
 ```
+
+Release builds require `LUMA_KEYSTORE_PASS` in the environment — there is no
+default password, and `npm run keystore` refuses to generate a key without it.
 
 The native shell (`mobile/apk-shell/`) is a dependency-free `Activity` that:
 
-- loads the live Vercel URL, and transparently falls back to the web bundle
-  **embedded in the APK** (`assets/public`) when the network is unavailable;
+- loads the live Vercel URL (`https://luma-messenger-chi.vercel.app`), and
+  transparently falls back to the web bundle **embedded in the APK**
+  (`assets/public`) when the network is unavailable;
 - paints the Luma splash and edge-to-edge ink system bars;
 - applies notch / gesture-bar safe insets;
-- bridges media-capture permission requests and hands external links to the OS;
-- routes the hardware back button through WebView history.
+- bridges WebView media-capture requests to Android's runtime permission
+  dialogs (camera / microphone);
+- opens `https://luma-messenger-chi.vercel.app/join/*` invite links from the
+  browser / chat apps directly in Luma (HTTPS deep links);
+- hands external links to the OS and routes the hardware back button through
+  WebView history.
 
 ### Toolchain
 
@@ -62,8 +70,32 @@ where Adoptium's CDN is unreachable.
 ### Signing
 
 The release key lives at `mobile/keystore/luma-release.keystore`
-(alias `luma`). Override the password with `LUMA_KEYSTORE_PASS` /
-`LUMA_KEY_ALIAS`. Regenerate with `npm run keystore -- --force`.
+(alias `luma`, PKCS#12 → JKS, RSA 2048, valid 30 years). It is **not committed**
+(`*.keystore` is gitignored) and the password is deliberately not stored in
+the repository — supply it as `LUMA_KEYSTORE_PASS` when signing:
 
-> Keep that file and its password safe: Android only accepts in-place upgrades
-> from APKs signed with the same key. **Back it up.**
+```bash
+LUMA_KEYSTORE_PASS=… npm run apk
+```
+
+Generate a fresh key with:
+
+```bash
+LUMA_KEYSTORE_PASS=<strong secret> npm run keystore
+```
+
+> Keep the keystore file and its password safe: Android only accepts in-place
+> upgrades from APKs signed with the same key. If the 2.0.0 key is lost,
+> sideloaders of v1.0.0 cannot upgrade in place and must uninstall/reinstall.
+> **Back it up somewhere durable (password manager) — it is not in this repo.**
+
+### Release checklist
+
+1. `npm run build` (web bundle is embedded into the APK).
+2. `LUMA_KEYSTORE_PASS=… npm run apk` — produces `release/luma-2.0.0.apk`.
+   The script signs with `apksigner` (v1+v2+v3 schemes) and verifies the
+   result before exiting.
+3. Upload the APK to the GitHub release and update `README.md`'s link.
+4. The Vercel production deploy is separate (`npx vercel --prod`); the APK
+   always loads the live site, with the embedded bundle only as an offline
+   fallback.
