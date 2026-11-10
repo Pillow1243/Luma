@@ -34,7 +34,7 @@ const argv = process.argv.slice(2);
 const DEBUG = argv.includes("--debug");
 const urlFlag = argv.indexOf("--url");
 const APP_URL =
-  urlFlag >= 0 ? argv[urlFlag + 1] : process.env.LUMA_APP_URL || "https://luma-messenger.vercel.app";
+  urlFlag >= 0 ? argv[urlFlag + 1] : process.env.LUMA_APP_URL || "https://luma-messenger-chi.vercel.app";
 
 const VERSION_NAME = "2.0.0";
 const VERSION_CODE = 2;

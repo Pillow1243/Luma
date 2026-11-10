@@ -38,12 +38,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Invite links: tap luma-messenger.vercel.app/join/* to open the app -->
+            <!-- Invite links: tap luma-messenger-chi.vercel.app/join/* to open the app -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="luma-messenger.vercel.app" android:pathPrefix="/join/" />
+                <data android:scheme="https" android:host="luma-messenger-chi.vercel.app" android:pathPrefix="/join/" />
             </intent-filter>
         </activity>
     </application>

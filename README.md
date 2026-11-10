@@ -10,7 +10,7 @@ and a native Android app.
 
 | | |
 | --- | --- |
-| **Web app** | https://luma-messenger.vercel.app |
+| **Web app** | https://luma-messenger-chi.vercel.app |
 | **Android APK** | [`release/luma-1.0.0.apk`](release) (also attached to GitHub Releases) |
 | **Package** | `app.luma.messenger` |
 | **Backend** | Supabase — Postgres + RLS + Realtime + Storage |

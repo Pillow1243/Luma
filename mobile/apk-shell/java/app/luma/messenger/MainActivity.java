@@ -44,7 +44,7 @@ import android.widget.ProgressBar;
 public class MainActivity extends Activity {
 
     /** Live deployment the APK prefers. */
-    private static final String APP_URL = "https://luma-messenger.vercel.app";
+    private static final String APP_URL = "https://luma-messenger-chi.vercel.app";
     /** Offline fallback shipped inside the APK. */
     private static final String BUNDLED_URL = "file:///android_asset/public/index.html";
 
@@ -231,7 +231,7 @@ public class MainActivity extends Activity {
                 String host = uri.getHost() == null ? "" : uri.getHost();
 
                 if ("file".equals(scheme) || "about".equals(scheme)) return false;
-                boolean internal = host.equals("luma-messenger.vercel.app")
+                boolean internal = host.equals("luma-messenger-chi.vercel.app")
                         || host.endsWith(".vercel.app")
                         || host.endsWith("supabase.co")
                         || host.equals("localhost")
@@ -313,13 +313,13 @@ public class MainActivity extends Activity {
         handleDeepLink(intent);
     }
 
-    /** Route VIEW intents for luma-messenger.vercel.app/join/* into the app. */
+    /** Route VIEW intents for luma-messenger-chi.vercel.app/join/* into the app. */
     private boolean handleDeepLink(Intent intent) {
         if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) return false;
         Uri uri = intent.getData();
         if (uri == null || !"https".equalsIgnoreCase(uri.getScheme())) return false;
         String host = uri.getHost() == null ? "" : uri.getHost();
-        if (!host.equals("luma-messenger.vercel.app") && !host.endsWith(".vercel.app")) return false;
+        if (!host.equals("luma-messenger-chi.vercel.app") && !host.endsWith(".vercel.app")) return false;
         webView.loadUrl(uri.toString());
         return true;
     }

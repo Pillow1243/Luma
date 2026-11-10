@@ -9,7 +9,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * Offline/dev: set LUMA_SERVER_URL=http://10.0.2.2:5173 (Android emulator) or
  * your LAN IP before `npx cap sync` to point at a local dev server.
  */
-const serverUrl = process.env.LUMA_SERVER_URL || "https://luma-messenger.vercel.app";
+const serverUrl = process.env.LUMA_SERVER_URL || "https://luma-messenger-chi.vercel.app";
 
 const config: CapacitorConfig = {
   appId: "app.luma.messenger",
@@ -27,7 +27,7 @@ const config: CapacitorConfig = {
     url: serverUrl,
     cleartext: serverUrl.startsWith("http://"),
     androidScheme: "https",
-    allowNavigation: ["*.supabase.co", "luma-messenger.vercel.app", "*.vercel.app"],
+    allowNavigation: ["*.supabase.co", "luma-messenger-chi.vercel.app", "*.vercel.app"],
   },
   plugins: {
     SplashScreen: {
