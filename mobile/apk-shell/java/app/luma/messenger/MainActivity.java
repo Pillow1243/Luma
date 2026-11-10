@@ -17,6 +17,9 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import java.util.ArrayList;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 
@@ -52,6 +55,8 @@ public class MainActivity extends Activity {
     private ProgressBar progress;
     private boolean showingFallback = false;
     private int mainFrameFailures = 0;
+    private PermissionRequest pendingMediaRequest;
+    private static final int REQ_MEDIA_PERMS = 4101;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,7 +68,8 @@ public class MainActivity extends Activity {
 
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
-        } else {
+            handleDeepLink(getIntent());
+        } else if (!handleDeepLink(getIntent())) {
             loadApp();
         }
     }
@@ -187,14 +193,33 @@ public class MainActivity extends Activity {
                 // Luma only ever asks for media capture (attachments, voice notes).
                 String[] requested = request.getResources();
                 boolean mediaOnly = requested.length > 0;
+                ArrayList<String> runtime = new ArrayList<String>();
                 for (String r : requested) {
-                    if (!PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)
-                            && !PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) {
+                    if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) {
+                        runtime.add(Manifest.permission.CAMERA);
+                    } else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) {
+                        runtime.add(Manifest.permission.RECORD_AUDIO);
+                    } else {
                         mediaOnly = false;
                     }
                 }
-                if (mediaOnly) request.grant(requested);
-                else request.deny();
+                if (!mediaOnly) {
+                    request.deny();
+                    return;
+                }
+                ArrayList<String> missing = new ArrayList<String>();
+                for (String perm : runtime) {
+                    if (checkSelfPermission(perm) != PackageManager.PERMISSION_GRANTED) {
+                        missing.add(perm);
+                    }
+                }
+                if (missing.isEmpty()) {
+                    request.grant(requested);
+                    return;
+                }
+                // Bridge WebView capture to Android's runtime permission dialog.
+                pendingMediaRequest = request;
+                requestPermissions(missing.toArray(new String[0]), REQ_MEDIA_PERMS);
             }
         });
 
@@ -266,6 +291,37 @@ public class MainActivity extends Activity {
         showingFallback = true;
         progress.setVisibility(View.GONE);
         webView.loadUrl(BUNDLED_URL);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_MEDIA_PERMS || pendingMediaRequest == null) return;
+        boolean allGranted = grantResults.length > 0;
+        for (int grant : grantResults) {
+            if (grant != PackageManager.PERMISSION_GRANTED) allGranted = false;
+        }
+        if (allGranted) pendingMediaRequest.grant(pendingMediaRequest.getResources());
+        else pendingMediaRequest.deny();
+        pendingMediaRequest = null;
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleDeepLink(intent);
+    }
+
+    /** Route VIEW intents for luma-messenger.vercel.app/join/* into the app. */
+    private boolean handleDeepLink(Intent intent) {
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) return false;
+        Uri uri = intent.getData();
+        if (uri == null || !"https".equalsIgnoreCase(uri.getScheme())) return false;
+        String host = uri.getHost() == null ? "" : uri.getHost();
+        if (!host.equals("luma-messenger.vercel.app") && !host.endsWith(".vercel.app")) return false;
+        webView.loadUrl(uri.toString());
+        return true;
     }
 
     /* -------------------------------------------------------------- back/etc */

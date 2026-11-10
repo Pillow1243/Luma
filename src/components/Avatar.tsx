@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { avatarUrl } from "../lib/data";
+import { avatarUrl, chatAvatarUrl } from "../lib/data";
 import { avatarTint, initials } from "../lib/format";
 import type { Profile } from "../lib/types";
-import { Users } from "lucide-react";
+import { Bookmark, Users } from "lucide-react";
 
 type Props = {
   profile?: Profile | null;
@@ -13,6 +13,8 @@ type Props = {
   group?: boolean;
   ring?: boolean;
   className?: string;
+  saved?: boolean;
+  chatAvatarPath?: string | null;
 };
 
 export function Avatar({
@@ -23,6 +25,8 @@ export function Avatar({
   group = false,
   ring = false,
   className = "",
+  saved = false,
+  chatAvatarPath = null,
 }: Props) {
   const [src, setSrc] = useState<string | null>(null);
   const name = profile?.display_name ?? label ?? "?";
@@ -31,15 +35,22 @@ export function Avatar({
   useEffect(() => {
     let alive = true;
     setSrc(null);
-    if (profile?.avatar_path) {
-      avatarUrl(profile.avatar_path).then((u) => alive && setSrc(u));
+    if (chatAvatarPath) {
+      chatAvatarUrl(chatAvatarPath)
+        .then((u) => alive && setSrc(u))
+        .catch(() => {});
+    } else if (profile?.avatar_path) {
+      avatarUrl(profile.avatar_path)
+        .then((u) => alive && setSrc(u))
+        .catch(() => {});
     }
     return () => {
       alive = false;
     };
-  }, [profile?.avatar_path, profile?.id]);
+  }, [profile?.avatar_path, profile?.id, chatAvatarPath]);
 
   const dim = { width: size, height: size };
+  const iconSize = Math.max(14, Math.round(size * 0.44));
 
   return (
     <div className={`relative shrink-0 ${className}`} style={dim}>
@@ -51,6 +62,8 @@ export function Avatar({
       >
         {src ? (
           <img src={src} alt={name} className="h-full w-full object-cover" loading="lazy" />
+        ) : saved ? (
+          <Bookmark style={{ width: iconSize, height: iconSize }} strokeWidth={2} className="fill-white/90" />
         ) : group ? (
           <Users style={{ width: size * 0.45, height: size * 0.45 }} strokeWidth={2} />
         ) : (

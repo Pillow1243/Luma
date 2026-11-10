@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main, arena/30581b7c-luma]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Build web bundle
+        run: npm run build
+        env:
+          # Publishable anon key — public by design, safe for CI.
+          VITE_SUPABASE_URL: https://lnhmbjqjfrnqkpsjpszb.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_XpWiwKw-bTG_au74ylwn8A_SYeJQWLE
+          VITE_APP_URL: https://luma-messenger-chi.vercel.app
+
+      - name: Check migrations are present
+        run: |
+          ls supabase/migrations/*.sql | sort
+          test -f supabase/migrations/20261109000000_luma_v3_1_schema.sql
+
+# NOTE: the live RLS authorization suite (tests/rls-tests.mjs) runs manually
+# against the production Supabase project — it creates throwaway accounts, so
+# it deliberately does not run on every PR. See README → "Testing".

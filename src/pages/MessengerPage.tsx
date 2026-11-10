@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate, useParams } from "react-router-dom";
-import { Loader2, MessageSquarePlus, Plus, Search } from "lucide-react";
+import { Archive, Bookmark, Loader2, MessageSquarePlus, Plus, Search, Star } from "lucide-react";
 import { Aurora } from "../components/Aurora";
 import { Avatar } from "../components/Avatar";
 import { ChatInfoModal } from "../components/ChatInfoModal";
 import { ChatListItem } from "../components/ChatListItem";
 import { ChatWindow } from "../components/ChatWindow";
 import { LumaMark, LumaWordmark } from "../components/LumaMark";
+import { NotificationsBell } from "../components/NotificationsBell";
 import { NewChatModal } from "../components/NewChatModal";
 import { ProfileModal } from "../components/ProfileModal";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { supabase } from "../lib/supabase";
-import { chatTitle, loadChats } from "../lib/data";
+import { chatTitle, createSavedChat, loadChats } from "../lib/data";
 import type { ChatSummary } from "../lib/types";
 
 export default function MessengerPage() {
@@ -26,6 +27,7 @@ export default function MessengerPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [newChatOpen, setNewChatOpen] = useState(false);
+  const [tab, setTab] = useState<"all" | "direct" | "groups" | "channels" | "archived">("all");
   const [profileOpen, setProfileOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "chat">(chatId ? "chat" : "list");
@@ -88,13 +90,56 @@ export default function MessengerPage() {
     return () => window.clearInterval(t);
   }, []);
 
+  const isArchived = (c: ChatSummary) => Boolean(c.archivedAt);
+  const tabChats = useMemo(() => {
+    switch (tab) {
+      case "direct":
+        return chats.filter((c) => c.chat.kind === "direct" && !isArchived(c));
+      case "groups":
+        return chats.filter((c) => c.chat.kind === "group" && !isArchived(c));
+      case "channels":
+        return chats.filter((c) => c.chat.kind === "channel" && !isArchived(c));
+      case "archived":
+        return chats.filter(isArchived);
+      default:
+        return chats.filter((c) => !isArchived(c));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chats, tab]);
   const filteredChats = useMemo(() => {
     const t = filter.trim().toLowerCase();
-    if (!t) return chats;
-    return chats.filter((c) => chatTitle(c, meId).toLowerCase().includes(t));
-  }, [chats, filter, meId]);
+    const base = tabChats;
+    if (!t) return base;
+    return base.filter((c) => chatTitle(c, meId).toLowerCase().includes(t));
+  }, [tabChats, filter, meId]);
+  const tabUnread = useMemo(
+    () => ({
+      all: chats.filter((c) => !isArchived(c)).reduce((n, c) => n + c.unreadCount, 0),
+      direct: chats.filter((c) => c.chat.kind === "direct" && !isArchived(c)).reduce((n, c) => n + c.unreadCount, 0),
+      groups: chats.filter((c) => c.chat.kind === "group" && !isArchived(c)).reduce((n, c) => n + c.unreadCount, 0),
+      channels: chats.filter((c) => c.chat.kind === "channel" && !isArchived(c)).reduce((n, c) => n + c.unreadCount, 0),
+      archived: chats.filter(isArchived).reduce((n, c) => n + c.unreadCount, 0),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chats]
+  );
+  const savedChat = chats.find((c) => c.chat.kind === "saved") ?? null;
 
   const totalUnread = chats.reduce((n, c) => n + c.unreadCount, 0);
+
+  async function openSaved() {
+    try {
+      if (savedChat) {
+        openChat(savedChat.chat.id);
+        return;
+      }
+      const id = await createSavedChat();
+      await refresh();
+      openChat(id);
+    } catch (err) {
+      toast.push(err instanceof Error ? err.message : "Could not open Saved Messages", "error");
+    }
+  }
 
   function openChat(id: string) {
     navigate(`/chat/${id}`);
@@ -127,6 +172,23 @@ export default function MessengerPage() {
 
             <div className="flex items-center gap-1.5">
               <button
+                onClick={() => navigate("/starred")}
+                className="btn-icon h-10 w-10"
+                aria-label="Starred messages"
+                title="Starred messages"
+              >
+                <Star className="h-[18px] w-[18px]" />
+              </button>
+              <button
+                onClick={openSaved}
+                className="btn-icon h-10 w-10"
+                aria-label="Saved Messages"
+                title="Saved Messages"
+              >
+                <Bookmark className="h-[18px] w-[18px]" />
+              </button>
+              <NotificationsBell />
+              <button
                 onClick={() => setNewChatOpen(true)}
                 className="btn-primary h-10 px-3 text-[13px]"
                 aria-label="New chat"
@@ -153,6 +215,42 @@ export default function MessengerPage() {
               className="field py-2.5 pl-10 text-[13.5px]"
             />
           </div>
+
+          <div className="mt-2 flex items-center gap-1 overflow-x-auto no-scrollbar" role="tablist" aria-label="Chat folders">
+            {(
+              [
+                { id: "all", label: "All", icon: null },
+                { id: "direct", label: "Personal", icon: null },
+                { id: "groups", label: "Groups", icon: null },
+                { id: "channels", label: "Channels", icon: null },
+                { id: "archived", label: "Archived", icon: Archive },
+              ] as const
+            ).map((t) => {
+              const count = tabUnread[t.id];
+              const activeTab = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  role="tab"
+                  aria-selected={activeTab}
+                  onClick={() => setTab(t.id)}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                    activeTab
+                      ? "bg-luma-500/25 text-luma-100 ring-1 ring-luma-400/40"
+                      : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+                  }`}
+                >
+                  {t.icon ? <t.icon className="h-3.5 w-3.5" /> : null}
+                  {t.label}
+                  {count > 0 && (
+                    <span className="grid h-[17px] min-w-[17px] place-items-center rounded-full bg-luma-500 px-1 text-[9.5px] font-bold text-white">
+                      {count > 99 ? "99+" : count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="mt-2 flex-1 overflow-y-auto px-2 pb-3 pt-1 no-scrollbar">
@@ -161,24 +259,39 @@ export default function MessengerPage() {
               <Loader2 className="h-5 w-5 animate-spin" />
             </div>
           ) : filteredChats.length === 0 ? (
-            <EmptySidebar onCreate={() => setNewChatOpen(true)} filtered={Boolean(filter)} />
+            <EmptySidebar
+              onCreate={() => setNewChatOpen(true)}
+              filtered={Boolean(filter) || tab !== "all"}
+              tab={tab}
+            />
           ) : (
             <div className="space-y-0.5">
-              {filteredChats.map((c) => (
+              {tab === "all" && savedChat && (
                 <ChatListItem
-                  key={c.chat.id}
-                  summary={c}
+                  key={savedChat.chat.id}
+                  summary={savedChat}
                   meId={meId}
-                  active={c.chat.id === chatId}
-                  onClick={() => openChat(c.chat.id)}
+                  active={savedChat.chat.id === chatId}
+                  onClick={() => openChat(savedChat.chat.id)}
                 />
-              ))}
+              )}
+              {filteredChats
+                .filter((c) => tab !== "all" || c.chat.kind !== "saved")
+                .map((c) => (
+                  <ChatListItem
+                    key={c.chat.id}
+                    summary={c}
+                    meId={meId}
+                    active={c.chat.id === chatId}
+                    onClick={() => openChat(c.chat.id)}
+                  />
+                ))}
             </div>
           )}
         </div>
 
         <div className="border-t border-white/[0.06] px-4 py-2.5 text-[10.5px] text-slate-600 safe-bottom">
-          Luma v1.0 · Realtime via Supabase
+          Luma v2.0 · Realtime via Supabase
         </div>
       </aside>
 
@@ -255,19 +368,21 @@ export default function MessengerPage() {
   );
 }
 
-function EmptySidebar({ onCreate, filtered }: { onCreate: () => void; filtered: boolean }) {
+function EmptySidebar({ onCreate, filtered, tab }: { onCreate: () => void; filtered: boolean; tab: string }) {
   return (
     <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
       <div className="grid h-16 w-16 place-items-center rounded-3xl border border-white/10 bg-white/[0.05]">
         <MessageSquarePlus className="h-6 w-6 text-luma-300" />
       </div>
       <h3 className="mt-4 text-[15px] font-semibold text-white">
-        {filtered ? "No matches" : "No conversations yet"}
+        {tab === "archived" ? "Nothing archived" : filtered ? "No matches" : "No conversations yet"}
       </h3>
       <p className="mt-1 max-w-[15rem] text-[12.5px] leading-relaxed text-slate-500">
-        {filtered
-          ? "Try a different search term."
-          : "Start a direct message or a group to see it here."}
+        {tab === "archived"
+          ? "Archived chats are tucked away here. Long-press any chat header to archive it."
+          : filtered
+            ? "Try a different search term or folder."
+            : "Start a direct message, a group or a channel to see it here."}
       </p>
       {!filtered && (
         <button onClick={onCreate} className="btn-ghost mt-4 px-4 py-2 text-[13px]">

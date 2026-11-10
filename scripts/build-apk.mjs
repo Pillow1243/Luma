@@ -36,8 +36,8 @@ const urlFlag = argv.indexOf("--url");
 const APP_URL =
   urlFlag >= 0 ? argv[urlFlag + 1] : process.env.LUMA_APP_URL || "https://luma-messenger.vercel.app";
 
-const VERSION_NAME = "1.0.0";
-const VERSION_CODE = 1;
+const VERSION_NAME = "2.0.0";
+const VERSION_CODE = 2;
 const MIN_SDK = 23;
 const TARGET_SDK = 34;
 
@@ -356,12 +356,17 @@ if (!fs.existsSync(keystore)) {
   die("Debug keystore not found.");
 }
 
-const keystorePass = DEBUG
-  ? "android"
-  : process.env.LUMA_KEYSTORE_PASS || "luma-release-2026";
+const keystorePass = DEBUG ? "android" : process.env.LUMA_KEYSTORE_PASS;
+if (!DEBUG && !keystorePass) {
+  die(
+    "LUMA_KEYSTORE_PASS is not set.\n" +
+      "  The release keystore password must be supplied via the environment — never hardcode it or commit it.\n" +
+      "  Generate a keystore with: LUMA_KEYSTORE_PASS=<secret> node scripts/make-keystore.mjs"
+  );
+}
 const keyAlias = DEBUG ? "androiddebugkey" : process.env.LUMA_KEY_ALIAS || "luma";
 
-const outName = DEBUG ? "luma-1.0.0-debug.apk" : "luma-1.0.0.apk";
+const outName = DEBUG ? "luma-2.0.0-debug.apk" : "luma-2.0.0.apk";
 const finalApk = path.join(OUT_DIR, outName);
 
 run(T.java, [
