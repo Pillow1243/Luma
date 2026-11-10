@@ -13,7 +13,7 @@ exist so that this cannot happen unnoticed.
 | command | what it proves | runs in CI |
 |---|---|---|
 | `npm run test:db` | Replaying `supabase/baseline/` + every migration on an **empty** database and on a database that already has the production baseline ends in the **same** schema (tables, columns, RLS policies, function bodies, privileges). | yes |
-| `npm run test:db:security` | 83 negative multi-user scenarios over RLS, RPC and Storage: IDOR, privilege escalation, invite redemption, prekey bundles, push endpoints, polls, `anon` access, `search_path` pinning, rate-limit tampering. | yes |
+| `npm run test:db:security` | 85 negative multi-user scenarios over RLS, RPC and Storage: IDOR, privilege escalation, invite redemption, prekey bundles, push endpoints, polls, `anon` access, `search_path` pinning, rate-limit tampering. | yes |
 | `npm run test:db:parity` | The replayed schema matches the fingerprint captured from the **hosted project**. | yes |
 
 They need a PostgreSQL server, not Supabase. See
