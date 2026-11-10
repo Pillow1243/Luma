@@ -223,6 +223,9 @@ permissive networks — a real limitation for a messenger, not a security bug.
   the AAD binding and the prekey bundle by someone who attacks it for a living.
 * **No browser-based test exists** for the offline/outbox paths, so the leak fix
   in §3.8 is verified by unit-level reasoning and `tsc`, not by a running app.
+* **The push ordering hazard in §4 is live**: the client on `main` sends the new
+  request shape, the deployed function expects the old one, and the two only work
+  together. It is benign today only because VAPID is unconfigured.
 
 ---
 
@@ -250,11 +253,18 @@ Order of operations for deployment:
    `npm run test:db:parity` — it should report zero differences.
 6. Only then mark the findings in `docs/DB.md` §7 as deployed.
 
-Steps 3–4 have an ordering constraint that is easy to get wrong: the current
-deployed function expects `{chatId, title, preview}`, and the client on this
-branch sends `{chatId, messageId}`. Shipping the client first breaks
-notifications (quietly — the call is best-effort); shipping the function first
-breaks them for old clients. Deploy the function and the client together.
+Steps 3–4 have an ordering constraint that is easy to get wrong: the function
+deployed today (version 1) expects `{chatId, title, preview}` and accepts no
+`messageId`, while the client merged in this branch sends `{chatId, messageId}`.
+Ship the client alone and the deployed function answers `400 chatId required` —
+silently, because the call is deliberately best-effort.
+
+What limits the damage today is that **no VAPID keys are configured**, so the
+deployed function returns `{configured:false}` before it reads any content and
+the client falls back to local desktop notifications. In other words Web Push is
+currently inert in production; it will stay inert after the client deploy until
+somebody adds the VAPID secrets *and* deploys the new function. Do all three in
+one step, or leave Web Push off.
 
 ---
 
