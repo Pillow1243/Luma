@@ -74,16 +74,32 @@ const log = (...a) => { if (!QUIET) console.log(...a); };
 const adaptations = [];
 
 async function probeCapabilities(client) {
-  const { rows } = await client.query(
-    `select name from pg_available_extensions where name in ('citext','pgcrypto','pg_trgm','pg_cron')`
-  );
-  const have = new Set(rows.map((r) => r.name));
-  let pg18 = false;
+  const have = new Set();
+  let genRandomUuidCore = false;
   try {
-    const v = await client.query("select current_setting('server_version_num')::int as n");
-    pg18 = v.rows[0].n >= 130000;
-  } catch { /* ignore */ }
-  return { have, genRandomUuidCore: pg18 };
+    // Probing on a throwaway connection matters: a failed CREATE EXTENSION
+    // aborts the enclosing transaction, and a probe database may not even
+    // exist yet. Both would masquerade as "module missing".
+    const probe = await clientFor("postgres");
+    try {
+      const { rows } = await probe.query(
+        `select name from pg_available_extensions where name in ('citext','pgcrypto','pg_trgm','pg_cron')`
+      );
+      for (const r of rows) have.add(r.name);
+    } finally {
+      await probe.end();
+    }
+    const v = await probeVersion(client);
+    genRandomUuidCore = Number(v) >= 130000;
+  } catch (err) {
+    log(`  ! capability probe failed (${err.message}); assuming a bare server`);
+  }
+  return { have, genRandomUuidCore };
+}
+
+async function probeVersion(client) {
+  const { rows } = await client.query("select current_setting('server_version_num') as n");
+  return rows[0].n;
 }
 
 /** Apply the local shims/config rewrites for modules the server lacks. */

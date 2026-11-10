@@ -62,6 +62,8 @@ create table if not exists public.profiles (
   )
 );
 create unique index if not exists profiles_username_key on public.profiles (username) where username is not null;
+create index if not exists profiles_name_trgm_idx
+  on public.profiles using gin (display_name extensions.gin_trgm_ops);
 
 create table if not exists public.chats (
   id uuid primary key default gen_random_uuid(),
@@ -84,6 +86,9 @@ create table if not exists public.chats (
   )
 );
 create unique index if not exists chats_username_key on public.chats (username) where username is not null;
+create index if not exists chats_name_trgm_idx
+  on public.chats using gin (name extensions.gin_trgm_ops)
+  where name is not null;
 
 create table if not exists public.chat_participants (
   chat_id uuid not null references public.chats (id) on delete cascade,
@@ -129,6 +134,12 @@ create index if not exists messages_chat_created_v2_idx on public.messages (chat
 create index if not exists messages_sender_idx on public.messages (sender_id);
 create index if not exists messages_expires_idx on public.messages (expires_at) where expires_at is not null;
 create index if not exists messages_pinned_idx on public.messages (chat_id, pinned_at) where pinned_at is not null;
+-- Trigram indexes for search. Captured from production, so the FRESH path
+-- creates them here; the UPGRADE path gets them from
+-- 20261110120000_luma_security_and_ratchet.sql.
+create index if not exists messages_body_trgm_idx
+  on public.messages using gin (body extensions.gin_trgm_ops)
+  where body is not null and body not like 'luma:e2ee:%' and deleted_at is null;
 
 create table if not exists public.message_reactions (
   message_id uuid not null references public.messages (id) on delete cascade,
