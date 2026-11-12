@@ -31,7 +31,8 @@
     "search_messages_global(p_term text, p_limit integer, p_offset integer, p_chat uuid, p_media_only boolean, p_from_me boolean)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds global search",
     "set_member_limit(p_chat uuid, p_limit integer)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds member limits",
     "set_slow_mode(p_chat uuid, p_seconds integer)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds slow mode",
-    "verify_bot_token(p_token text)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds bot token verification (service_role only)"
+    "verify_bot_token(p_token text)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds bot token verification (service_role only)",
+    "schedule_message(p_chat uuid, p_body text, p_reply_to uuid, p_media_path text, p_media_name text, p_media_type text, p_mentions uuid[], p_scheduled_at timestamp with time zone)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds scheduled-message creation"
   },
   "generated_at": "2026-11-12",
   "grants": {
@@ -46,6 +47,22 @@
     "message_drafts": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds draft sync",
     "push_log": "20261110180000_push_log.sql adds push dedup/rate-limit storage for send-push",
     "scheduled_messages": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds scheduled messages",
-    "user_sessions": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds device sessions"
+    "user_sessions": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds device sessions",
+    "chats": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds privacy and moderation fields",
+    "profiles": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds privacy and moderation fields"
+  },
+  "policies": {
+    "public.bots.bots_owner_delete:DELETE:{authenticated}": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds table access policy",
+    "public.bots.bots_owner_insert:INSERT:{authenticated}": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds table access policy",
+    "public.bots.bots_owner_read:SELECT:{authenticated}": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds table access policy",
+    "public.bots.bots_owner_update:UPDATE:{authenticated}": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds table access policy",
+    "public.chat_audit_log.audit_admin_read:SELECT:{authenticated}": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds table access policy",
+    "public.link_previews.link_previews_read:SELECT:{authenticated}": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds table access policy",
+    "public.message_drafts.drafts_own:ALL:{authenticated}": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds table access policy",
+    "public.scheduled_messages.scheduled_delete_own:DELETE:{authenticated}": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds table access policy",
+    "public.scheduled_messages.scheduled_insert_own:INSERT:{authenticated}": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds table access policy",
+    "public.scheduled_messages.scheduled_read_own:SELECT:{authenticated}": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds table access policy",
+    "public.scheduled_messages.scheduled_update_own:UPDATE:{authenticated}": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds table access policy",
+    "public.user_sessions.sessions_own:ALL:{authenticated}": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds table access policy"
   }
 }

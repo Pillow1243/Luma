@@ -974,6 +974,31 @@ $$;
 revoke all on function public.export_my_data() from public, anon;
 grant execute on function public.export_my_data() to authenticated;
 
+-- Ensure all user-scoped SECURITY DEFINER RPCs are unavailable to service_role
+-- unless explicitly required by a trusted worker. This keeps fresh/upgrade
+-- ACLs deterministic and avoids accidental cross-role grants.
+do $$
+declare r record;
+begin
+  for r in
+    select p.oid::regprocedure as signature
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.proname = any (array[
+         'cancel_scheduled_message', 'clear_draft', 'create_bot', 'create_bot_token',
+         'export_my_data', 'get_chat_analytics', 'get_draft', 'heartbeat_session',
+         'list_chat_audit', 'list_my_bot_tokens', 'list_my_sessions',
+         'list_scheduled_messages', 'log_chat_audit', 'audit_participant_changes',
+         'register_session', 'revoke_bot_token', 'revoke_session', 'save_draft',
+         'schedule_message', 'search_messages_global', 'set_member_limit', 'set_slow_mode'
+       ])
+  loop
+    execute format('revoke all on function %s from service_role', r.signature);
+  end loop;
+end
+$$;
+
 -- ---------------------------------------------------------------------------
 -- 18. Retention cleanups + cron
 -- ---------------------------------------------------------------------------
