@@ -1,3 +1,5 @@
+export type ProfileVisibility = "public" | "contacts" | "private";
+
 export type Profile = {
   id: string;
   display_name: string;
@@ -8,6 +10,10 @@ export type Profile = {
   show_last_seen: boolean;
   last_seen_at: string | null;
   public_key: string | null;
+  show_online_status?: boolean;
+  show_read_receipts?: boolean;
+  show_typing?: boolean;
+  profile_visibility?: ProfileVisibility;
 };
 
 export type ChatKind = "direct" | "group" | "saved" | "channel";
@@ -25,6 +31,8 @@ export type Chat = {
   description: string;
   username: string | null;
   is_public: boolean;
+  slow_mode_seconds?: number;
+  member_limit?: number;
 };
 
 export type ChatParticipant = {
@@ -148,4 +156,87 @@ export type CallParticipant = {
 export type CallSignal = {
   id: string; call_id: string; from_user: string; to_user: string;
   kind: "offer" | "answer" | "ice"; payload: RTCSessionDescriptionInit | RTCIceCandidateInit;
+};
+
+export type ScheduledMessage = {
+  id: string;
+  chat_id: string;
+  sender_id: string;
+  body: string | null;
+  reply_to: string | null;
+  media_path: string | null;
+  media_name: string | null;
+  media_type: string | null;
+  mentions: string[];
+  scheduled_at: string;
+  created_at: string;
+};
+
+export type MessageDraft = {
+  user_id: string;
+  chat_id: string;
+  body: string;
+  reply_to: string | null;
+  updated_at: string;
+};
+
+export type AuditAction =
+  | "member_added" | "member_removed" | "admin_granted" | "admin_revoked"
+  | "invite_created" | "invite_revoked" | "slow_mode_changed" | "member_limit_changed"
+  | "chat_updated" | "join_approved" | "join_rejected" | "message_deleted" | "bot_message";
+
+export type ChatAuditEntry = {
+  id: string;
+  chat_id: string;
+  actor_id: string | null;
+  action: AuditAction;
+  target_id: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+  actor?: Profile | null;
+};
+
+export type UserSession = {
+  id: string;
+  user_id: string;
+  device_name: string;
+  user_agent: string;
+  ip_hash: string | null;
+  last_seen_at: string;
+  created_at: string;
+  revoked_at: string | null;
+};
+
+export type Bot = {
+  id: string;
+  owner_id: string;
+  name: string;
+  username: string;
+  description: string;
+  webhook_url: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type BotTokenMeta = {
+  id: string;
+  scopes: string[];
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+};
+
+export type LinkPreview = {
+  url: string;
+  title: string;
+  description: string;
+  imageUrl: string | null;
+  cached: boolean;
+};
+
+export type ChatAnalytics = {
+  messages_total: number;
+  messages_7d: number;
+  members: number;
+  media_total: number;
 };

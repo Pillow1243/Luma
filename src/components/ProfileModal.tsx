@@ -64,6 +64,9 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
   const [username, setUsername] = useState(profile?.username ?? "");
   const [bio, setBio] = useState(profile?.bio ?? "");
   const [showLastSeen, setShowLastSeen] = useState(profile?.show_last_seen ?? true);
+  const [showReadReceipts, setShowReadReceipts] = useState(profile?.show_read_receipts ?? true);
+  const [showTyping, setShowTyping] = useState(profile?.show_typing ?? true);
+  const [profileVisibility, setProfileVisibility] = useState(profile?.profile_visibility ?? "public");
   const [wipeKeysOnSignOut, setWipeKeysOnSignOut] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingUser, setSavingUser] = useState(false);
@@ -98,6 +101,9 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
     setUsername(profile?.username ?? "");
     setBio(profile?.bio ?? "");
     setShowLastSeen(profile?.show_last_seen ?? true);
+    setShowReadReceipts(profile?.show_read_receipts ?? true);
+    setShowTyping(profile?.show_typing ?? true);
+    setProfileVisibility(profile?.profile_visibility ?? "public");
   }, [profile]);
 
   const loadBlocked = useCallback(async () => {
@@ -190,6 +196,21 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
       await refreshProfile();
     } catch {
       setShowLastSeen(!next);
+      toast.push("Could not update privacy", "error");
+    }
+  }
+
+  async function updatePrivacy<K extends "show_read_receipts" | "show_typing" | "profile_visibility">(
+    key: K,
+    value: NonNullable<Profile[K]>,
+    rollback: () => void
+  ) {
+    if (!profile) return;
+    try {
+      await updateProfile(profile.id, { [key]: value });
+      await refreshProfile();
+    } catch {
+      rollback();
       toast.push("Could not update privacy", "error");
     }
   }
@@ -562,6 +583,50 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
           </span>
         </button>
 
+        <button
+          onClick={() => {
+            const next = !showReadReceipts;
+            setShowReadReceipts(next);
+            void updatePrivacy("show_read_receipts", next, () => setShowReadReceipts(!next));
+          }}
+          className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-start transition-colors hover:bg-white/[0.08]"
+          aria-pressed={showReadReceipts}
+        >
+          <Check className="h-4 w-4 text-luma-300" />
+          <span className="flex-1 text-[14px] text-slate-200">Read receipts</span>
+          <span className="chip">{showReadReceipts ? "On" : "Off"}</span>
+        </button>
+        <button
+          onClick={() => {
+            const next = !showTyping;
+            setShowTyping(next);
+            void updatePrivacy("show_typing", next, () => setShowTyping(!next));
+          }}
+          className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-start transition-colors hover:bg-white/[0.08]"
+          aria-pressed={showTyping}
+        >
+          <Activity className="h-4 w-4 text-luma-300" />
+          <span className="flex-1 text-[14px] text-slate-200">Typing indicators</span>
+          <span className="chip">{showTyping ? "On" : "Off"}</span>
+        </button>
+        <label className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+          <Globe className="h-4 w-4 text-luma-300" />
+          <span className="flex-1 text-[14px] text-slate-200">Profile visibility</span>
+          <select
+            className="field w-auto py-1"
+            value={profileVisibility}
+            onChange={(e) => {
+              const previous = profileVisibility;
+              const next = e.target.value as typeof profileVisibility;
+              setProfileVisibility(next);
+              void updatePrivacy("profile_visibility", next, () => setProfileVisibility(previous));
+            }}
+          >
+            <option value="public">Public</option>
+            <option value="contacts">Contacts</option>
+            <option value="private">Private</option>
+          </select>
+        </label>
         <button
           onClick={toggleNotifications}
           disabled={notifBusy || notifPerm === "unsupported"}

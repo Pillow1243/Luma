@@ -1,5 +1,15 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+/**
+ * turn-credentials v2 — short-lived ICE/TURN credentials for authenticated users.
+ * Contract: POST (auth required) -> { iceServers, ttl, source, contract }
+ * Falls back to STUN-only when no TURN provider is configured. Never embeds
+ * static TURN secrets in the client bundle; static secrets live only here.
+ * External provider calls are bounded to 5s via AbortController.
+ */
+
+const CONTRACT = "v2";
+
 function corsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("origin") ?? "";
   const allowed =
@@ -7,15 +17,16 @@ function corsHeaders(req: Request): Record<string, string> {
     origin === "capacitor://localhost" ||
     origin === "https://localhost" ||
     origin === "http://localhost" ||
-    /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin) ||
+    /^https:\/\/luma-messenger(-[a-z0-9]+)*\.vercel\.app$/i.test(origin) ||
     /^https:\/\/[a-z0-9-]+\.e2b\.app$/i.test(origin) ||
     /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
   return {
     "Access-Control-Allow-Origin": allowed ? origin : "https://luma-messenger-chi.vercel.app",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-luma-contract",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Vary": "Origin",
+    Vary: "Origin",
     "Content-Type": "application/json",
+    "X-Luma-Contract": CONTRACT,
   };
 }
 
@@ -23,6 +34,16 @@ const DEFAULT_STUN = [
   { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
   { urls: ["stun:stun.cloudflare.com:3478"] },
 ];
+
+async function fetchWithTimeout(url: string, init: RequestInit, ms = 5000): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 Deno.serve(async (req) => {
   const headers = corsHeaders(req);
@@ -32,7 +53,7 @@ Deno.serve(async (req) => {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const authHeader = req.headers.get("authorization") ?? "";
   if (!authHeader.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers });
+    return new Response(JSON.stringify({ error: { code: "unauthorized", message: "Unauthorized" }, contract: CONTRACT }), { status: 401, headers });
   }
 
   const userClient = createClient(supabaseUrl, anonKey, {
@@ -44,7 +65,7 @@ Deno.serve(async (req) => {
     error: authErr,
   } = await userClient.auth.getUser();
   if (authErr || !user) {
-    return new Response(JSON.stringify({ error: "Invalid session" }), { status: 401, headers });
+    return new Response(JSON.stringify({ error: { code: "invalid_session", message: "Invalid session" }, contract: CONTRACT }), { status: 401, headers });
   }
 
   // Option 1: Cloudflare Calls ephemeral TURN credentials
@@ -52,7 +73,7 @@ Deno.serve(async (req) => {
   const cfApiToken = Deno.env.get("CF_TURN_API_TOKEN");
   if (cfTokenId && cfApiToken) {
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `https://rtc.live.cloudflare.com/v1/turn/keys/${cfTokenId}/credentials/generate-ice-servers`,
         {
           method: "POST",
@@ -67,7 +88,7 @@ Deno.serve(async (req) => {
         const json = await res.json();
         if (Array.isArray(json.iceServers)) {
           return new Response(
-            JSON.stringify({ iceServers: json.iceServers, ttl: 3600, source: "cloudflare-ephemeral" }),
+            JSON.stringify({ iceServers: json.iceServers, ttl: 3600, source: "cloudflare-ephemeral", contract: CONTRACT }),
             { status: 200, headers }
           );
         }
@@ -82,14 +103,15 @@ Deno.serve(async (req) => {
   const meteredKey = Deno.env.get("METERED_API_KEY");
   if (meteredDomain && meteredKey) {
     try {
-      const res = await fetch(
-        `https://${meteredDomain}/api/v1/turn/credentials?apiKey=${encodeURIComponent(meteredKey)}`
+      const res = await fetchWithTimeout(
+        `https://${meteredDomain}/api/v1/turn/credentials?apiKey=${encodeURIComponent(meteredKey)}`,
+        {}
       );
       if (res.ok) {
         const iceServers = await res.json();
         if (Array.isArray(iceServers)) {
           return new Response(
-            JSON.stringify({ iceServers, ttl: 3600, source: "metered-ephemeral" }),
+            JSON.stringify({ iceServers, ttl: 3600, source: "metered-ephemeral", contract: CONTRACT }),
             { status: 200, headers }
           );
         }
@@ -116,13 +138,14 @@ Deno.serve(async (req) => {
         ],
         ttl: 3600,
         source: "server-turn",
+        contract: CONTRACT,
       }),
       { status: 200, headers }
     );
   }
 
   return new Response(
-    JSON.stringify({ iceServers: DEFAULT_STUN, ttl: 3600, source: "stun-only" }),
+    JSON.stringify({ iceServers: DEFAULT_STUN, ttl: 3600, source: "stun-only", contract: CONTRACT }),
     { status: 200, headers }
   );
 });
