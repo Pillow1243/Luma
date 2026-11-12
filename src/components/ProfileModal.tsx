@@ -93,6 +93,13 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
   const [diagOpen, setDiagOpen] = useState(false);
   const [health, setHealth] = useState<{ ok: boolean; db: string; latencyMs: number } | null>(null);
   const [opkCount, setOpkCount] = useState<number | null>(null);
+  const [sessions, setSessions] = useState<Array<{ id: string; device_name: string; user_agent: string; created_at: string; last_seen_at: string; revoked_at: string | null }>>([]);
+  const [sessionsBusy, setSessionsBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [bots, setBots] = useState<Array<{ id: string; name: string; username: string; description: string; is_active: boolean }>>([]);
+  const [botName, setBotName] = useState("");
+  const [botUsername, setBotUsername] = useState("");
+  const [newBotToken, setNewBotToken] = useState("");
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -122,6 +129,99 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
       if ("Notification" in window) setNotifPerm(Notification.permission);
     }
   }, [open, loadBlocked]);
+
+  const loadSessions = useCallback(async () => {
+    if (!open || !profile) return;
+    setSessionsBusy(true);
+    try {
+      const ua = navigator.userAgent.slice(0, 240);
+      const device = /Android/i.test(ua) ? "Android device" : /iPhone|iPad/i.test(ua) ? "iOS device" : /Windows/i.test(ua) ? "Windows browser" : /Mac/i.test(ua) ? "Mac browser" : "Web browser";
+      await supabase.rpc("register_session", { p_device_name: device, p_user_agent: ua });
+      const { data, error } = await supabase.rpc("list_my_sessions");
+      if (error) throw error;
+      setSessions((data ?? []) as typeof sessions);
+    } catch {
+      toast.push("Could not load active sessions", "error");
+    } finally {
+      setSessionsBusy(false);
+    }
+  }, [open, profile, toast]);
+
+  useEffect(() => {
+    if (!open || !profile) return;
+    void loadSessions();
+    void supabase.from("bots").select("id,name,username,description,is_active").eq("owner_id", profile.id)
+      .then(({ data }) => setBots((data ?? []) as typeof bots));
+  }, [open, profile, loadSessions]);
+
+  async function createBot() {
+    try {
+      const { data, error } = await supabase.rpc("create_bot", {
+        p_name: botName.trim(), p_username: botUsername.trim().toLowerCase(), p_description: "",
+        p_webhook_url: null, p_webhook_secret: null,
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row?.token) setNewBotToken(String(row.token));
+      else throw new Error("The server did not return a bot token");
+      setBotName(""); setBotUsername("");
+      const { data: rows } = await supabase.from("bots").select("id,name,username,description,is_active").eq("owner_id", profile?.id);
+      setBots((rows ?? []) as typeof bots);
+      toast.push("Bot created; copy its token now", "success");
+    } catch {
+      toast.push("Could not create bot; check the username and try another", "error");
+    }
+  }
+
+  async function rotateBotToken(botId: string) {
+    try {
+      const { data: current, error: listError } = await supabase.rpc("list_my_bot_tokens", { p_bot: botId });
+      if (listError) throw listError;
+      for (const token of (current ?? []) as Array<{ id: string; revoked_at: string | null }>) {
+        if (!token.revoked_at) {
+          const { error } = await supabase.rpc("revoke_bot_token", { p_token_id: token.id });
+          if (error) throw error;
+        }
+      }
+      const { data, error } = await supabase.rpc("create_bot_token", { p_bot: botId, p_scopes: ["messages:send", "messages:read", "chats:read"] });
+      if (error) throw error;
+      setNewBotToken(String(data));
+      toast.push("Previous tokens revoked; new token created", "success");
+    } catch {
+      toast.push("Could not create bot token", "error");
+    }
+  }
+
+  async function revokeSession(id: string) {
+    try {
+      const { error } = await supabase.rpc("revoke_session", { p_id: id });
+      if (error) throw error;
+      await loadSessions();
+      toast.push("Session revoked", "success");
+    } catch {
+      toast.push("Could not revoke session", "error");
+    }
+  }
+
+  async function exportData() {
+    setExportBusy(true);
+    try {
+      const { data, error } = await supabase.rpc("export_my_data");
+      if (error) throw error;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `luma-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.push("Data export downloaded", "success");
+    } catch {
+      toast.push("Could not export your data", "error");
+    } finally {
+      setExportBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!diagOpen || !open) return;
@@ -760,6 +860,46 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
         >
           <ShieldOff className="h-4 w-4 text-amber-300" />
           <span className="flex-1 text-[14px] text-slate-200">{t("signOutAllDevices")}</span>
+        </button>
+
+        <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[13px] font-semibold text-slate-200">Active sessions</span>
+            <button className="text-[11px] text-luma-200" onClick={() => void loadSessions()} disabled={sessionsBusy}>{sessionsBusy ? "Loading…" : "Refresh"}</button>
+          </div>
+          {sessions.map((session) => (
+            <div key={session.id} className="flex items-center gap-2 rounded-xl bg-white/[0.04] px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[12px] text-slate-200">{session.device_name}</div>
+                <div className="text-[10px] text-slate-500">Last active {new Date(session.last_seen_at).toLocaleString()}</div>
+              </div>
+              {session.revoked_at ? <span className="chip">Revoked</span> : <button className="text-[11px] text-rose-300" onClick={() => void revokeSession(session.id)}>Revoke</button>}
+            </div>
+          ))}
+          {!sessions.length && !sessionsBusy && <p className="text-[11px] text-slate-500">No session records are available.</p>}
+        </div>
+
+        <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+          <div className="text-[13px] font-semibold text-slate-200">Bots</div>
+          {bots.map((bot) => <div key={bot.id} className="flex items-center gap-2 text-[12px]">
+            <span className="flex-1 text-slate-300">{bot.name} · @{bot.username}</span>
+            <button className="text-luma-200" onClick={() => void rotateBotToken(bot.id)}>New token</button>
+          </div>)}
+          <div className="grid grid-cols-2 gap-2">
+            <input className="field" placeholder="Bot name" value={botName} onChange={(e) => setBotName(e.target.value)} />
+            <input className="field" placeholder="Username" value={botUsername} onChange={(e) => setBotUsername(e.target.value)} />
+          </div>
+          <button className="btn-primary h-9 w-full text-[12px]" disabled={!botName.trim() || !botUsername.trim()} onClick={() => void createBot()}>Create bot</button>
+          {newBotToken && <div className="break-all rounded-xl bg-amber-500/10 p-2 text-[10px] text-amber-100"><b>Copy now — shown only once:</b> {newBotToken}<button className="ms-2 underline" onClick={() => { void navigator.clipboard.writeText(newBotToken); toast.push("Token copied", "success"); }}>Copy</button></div>}
+        </div>
+
+        <button
+          onClick={() => void exportData()}
+          disabled={exportBusy}
+          className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-start transition-colors hover:bg-white/[0.08] disabled:opacity-50"
+        >
+          <Globe className="h-4 w-4 text-luma-300" />
+          <span className="flex-1 text-[14px] text-slate-200">{exportBusy ? "Preparing export…" : "Export my data"}</span>
         </button>
 
         <button

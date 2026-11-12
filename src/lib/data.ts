@@ -83,7 +83,7 @@ export async function searchProfilesInChat(
 
 export async function updateProfile(
   id: string,
-  patch: Partial<Pick<Profile, "display_name" | "avatar_path" | "username" | "bio" | "show_last_seen">>
+  patch: Partial<Pick<Profile, "display_name" | "avatar_path" | "username" | "bio" | "show_last_seen" | "show_online_status" | "show_read_receipts" | "show_typing" | "profile_visibility">>
 ): Promise<Profile> {
   const payload =
     patch.show_last_seen === false
@@ -96,6 +96,7 @@ export async function updateProfile(
     .select("*")
     .single();
   if (error) throw error;
+  privacyCache.delete(id);
   return data as Profile;
 }
 
@@ -790,7 +791,18 @@ export async function toggleReaction(
 
 /* -------------------------- read / presence / typing --------------------- */
 
+const privacyCache = new Map<string, { read: boolean; typing: boolean; online: boolean; until: number }>();
+async function myPrivacy(userId: string) {
+  const cached = privacyCache.get(userId);
+  if (cached && cached.until > Date.now()) return cached;
+  const { data } = await supabase.from("profiles").select("show_read_receipts,show_typing,show_online_status").eq("id", userId).maybeSingle();
+  const value = { read: data?.show_read_receipts !== false, typing: data?.show_typing !== false, online: data?.show_online_status !== false, until: Date.now() + 60_000 };
+  privacyCache.set(userId, value);
+  return value;
+}
+
 export async function markRead(chatId: string, userId: string): Promise<void> {
+  if (!(await myPrivacy(userId)).read) return;
   const { error } = await supabase
     .from("chat_participants")
     .update({ last_read_at: new Date().toISOString() })
@@ -802,6 +814,7 @@ export async function markRead(chatId: string, userId: string): Promise<void> {
 let lastProfileBeat = 0;
 
 export async function setTyping(chatId: string, userId: string, isTyping: boolean): Promise<void> {
+  if (isTyping && !(await myPrivacy(userId)).typing) return;
   const until = new Date(Date.now() + (isTyping ? 5000 : 0)).toISOString();
   const { error } = await supabase
     .from("chat_participants")
@@ -812,6 +825,7 @@ export async function setTyping(chatId: string, userId: string, isTyping: boolea
 }
 
 export async function heartbeat(chatId: string, userId: string): Promise<void> {
+  if (!(await myPrivacy(userId)).online) return;
   await supabase
     .from("chat_participants")
     .update({ last_seen_at: new Date().toISOString() })
