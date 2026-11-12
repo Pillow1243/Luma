@@ -52,6 +52,7 @@ import { useToast } from "../context/ToastContext";
 import { useNavigate } from "react-router-dom";
 import { ReportModal } from "./ReportModal";
 import { reportMessage } from "../lib/data";
+import { supabase } from "../lib/supabase";
 
 const TTL_OPTIONS = [
   { label: "Off", value: null as number | null },
@@ -91,6 +92,10 @@ export function ChatInfoModal({
   const [descDraft, setDescDraft] = useState("");
   const [savingDesc, setSavingDesc] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [slowMode, setSlowMode] = useState(summary?.chat.slow_mode_seconds ?? 0);
+  const [memberLimit, setMemberLimit] = useState(summary?.chat.member_limit ?? 100);
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditRows, setAuditRows] = useState<Array<{ id: string; action: string; created_at: string; details: Record<string, unknown> }>>([]);
 
   const chatId = summary?.chat.id ?? null;
   const isSaved = summary?.chat.kind === "saved";
@@ -117,6 +122,29 @@ export function ChatInfoModal({
     }
   }, [chatId, summary]);
 
+  async function saveSlowMode() {
+    if (!chatId) return;
+    const { error } = await supabase.rpc("set_slow_mode", { p_chat: chatId, p_seconds: slowMode });
+    if (error) toast.push("Could not update slow mode", "error");
+    else toast.push("Slow mode updated", "success");
+  }
+
+  async function saveMemberLimit() {
+    if (!chatId) return;
+    const { error } = await supabase.rpc("set_member_limit", { p_chat: chatId, p_limit: memberLimit });
+    if (error) toast.push("Could not update member limit", "error");
+    else toast.push("Member limit updated", "success");
+  }
+
+  async function toggleAudit() {
+    if (!auditOpen && chatId) {
+      const { data, error } = await supabase.rpc("list_chat_audit", { p_chat: chatId, p_limit: 50 });
+      if (error) { toast.push("Could not load audit log", "error"); return; }
+      setAuditRows((data ?? []) as typeof auditRows);
+    }
+    setAuditOpen((v) => !v);
+  }
+
   useEffect(() => {
     if (open) {
       reload();
@@ -126,6 +154,9 @@ export function ChatInfoModal({
       setAddOpen(false);
       setInvitesOpen(false);
       setRenaming(false);
+      setSlowMode(summary?.chat.slow_mode_seconds ?? 0);
+      setMemberLimit(summary?.chat.member_limit ?? 100);
+      setAuditOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, chatId]);
@@ -512,6 +543,26 @@ export function ChatInfoModal({
           </div>
         )}
       </div>
+
+      {manageable && canModerate && (summary.chat.kind === "group" || isChannel) && (
+        <div className="mt-5 space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+          <div className="text-[12px] font-medium uppercase tracking-wider text-slate-500">Group controls</div>
+          <label className="flex items-center gap-2 text-[12px] text-slate-300">
+            Slow mode
+            <select className="field ms-auto w-auto py-1" value={slowMode} onChange={(e) => setSlowMode(Number(e.target.value))}>
+              {[0, 5, 10, 30, 60, 300].map((s) => <option key={s} value={s}>{s ? `${s}s` : "Off"}</option>)}
+            </select>
+            <button className="btn-ghost px-2 py-1 text-[11px]" onClick={() => void saveSlowMode()}>Save</button>
+          </label>
+          <label className="flex items-center gap-2 text-[12px] text-slate-300">
+            Member limit
+            <input type="number" min={2} max={100000} className="field ms-auto w-24 py-1" value={memberLimit} onChange={(e) => setMemberLimit(Number(e.target.value))} />
+            <button className="btn-ghost px-2 py-1 text-[11px]" onClick={() => void saveMemberLimit()}>Save</button>
+          </label>
+          <button className="text-[11px] text-luma-200" onClick={() => void toggleAudit()}>{auditOpen ? "Hide activity log" : "View activity log"}</button>
+          {auditOpen && <div className="max-h-40 space-y-1 overflow-auto">{auditRows.map((row) => <div key={row.id} className="text-[10px] text-slate-400">{row.action} · {new Date(row.created_at).toLocaleString()}</div>)}</div>}
+        </div>
+      )}
 
       {/* members */}
       {manageable && (

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUp,
+  CalendarClock,
   BarChart3,
   Sticker,
   AtSign,
@@ -18,6 +19,12 @@ import { useToast } from "../context/ToastContext";
 import { useI18n } from "../lib/i18n";
 import { StickerPicker } from "./StickerPicker";
 import type { MessageWithMeta, Profile } from "../lib/types";
+import { supabase } from "../lib/supabase";
+
+function localDateTimeInput(date: Date): string {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
 
 const EMOJI = [
   "😀","😂","😍","🥰","😎","🤔","😅","🙌","🔥","✨","💜","❤️","👍","🙏","🎉","😭",
@@ -101,6 +108,10 @@ export function Composer({
   const [mentionCandidates, setMentionCandidates] = useState<Profile[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [draftReady, setDraftReady] = useState(false);
+  const [scheduledItems, setScheduledItems] = useState<Array<{ id: string; body: string | null; scheduled_at: string }>>([]);
+  const [scheduledOpen, setScheduledOpen] = useState(false);
 
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -122,8 +133,21 @@ export function Composer({
     setRecorded(null);
     setRecording(false);
     setMentionOpen(false);
+    setScheduledAt("");
+    setDraftReady(false);
+    if (secret) return;
+    let active = true;
+    void supabase.rpc("get_draft", { p_chat: chatId }).then(({ data, error }) => {
+      if (!active) return;
+      if (!error && data) {
+        const row = Array.isArray(data) ? data[0] : data;
+        if (row?.body) setValue((current) => current || String(row.body));
+      }
+      setDraftReady(true);
+    });
+    return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId]);
+  }, [chatId, secret, meId]);
 
   useEffect(() => {
     const ta = taRef.current;
@@ -137,6 +161,14 @@ export function Composer({
   }, [replyTo]);
 
   const secretRef = useRef({ chatId, secret });
+
+  useEffect(() => {
+    if (secret || !draftReady) return;
+    const timer = window.setTimeout(() => {
+      void supabase.rpc("save_draft", { p_chat: chatId, p_body: value, p_reply_to: replyTo?.id ?? null });
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [chatId, value, replyTo?.id, secret, draftReady]);
 
   useEffect(() => {
     if (secretRef.current.chatId === chatId && secretRef.current.secret && !secret) return;
@@ -207,13 +239,52 @@ export function Composer({
     return [...found];
   }
 
+  async function toggleScheduled() {
+    if (!scheduledOpen) {
+      const { data, error } = await supabase.rpc("list_scheduled_messages", { p_chat: chatId });
+      if (error) { toast.push("Could not load scheduled messages", "error"); return; }
+      setScheduledItems((data ?? []) as typeof scheduledItems);
+    }
+    setScheduledOpen((v) => !v);
+  }
+
+  async function cancelScheduled(id: string) {
+    const { error } = await supabase.rpc("cancel_scheduled_message", { p_id: id });
+    if (error) { toast.push("Could not cancel scheduled message", "error"); return; }
+    setScheduledItems((rows) => rows.filter((row) => row.id !== id));
+  }
+
   async function submit() {
     const body = value.trim();
     if (!body || submitting || disabled) return;
     setSubmitting(true);
     try {
+      if (scheduledAt && !secret) {
+        const when = new Date(scheduledAt);
+        if (!Number.isFinite(when.getTime()) || when.getTime() < Date.now() + 60_000) {
+          toast.push("Choose a time at least one minute from now", "error");
+          return;
+        }
+        const { error } = await supabase.rpc("schedule_message", {
+          p_chat: chatId,
+          p_body: body,
+          p_reply_to: replyTo?.id ?? null,
+          p_media_path: null,
+          p_media_name: null,
+          p_media_type: null,
+          p_mentions: resolveMentions(body),
+          p_scheduled_at: when.toISOString(),
+        });
+        if (error) throw error;
+        setValue("");
+        setScheduledAt("");
+        void supabase.rpc("clear_draft", { p_chat: chatId });
+        toast.push("Message scheduled", "success");
+        return;
+      }
       const accepted = await onSend({ body, mentions: resolveMentions(body) });
       if (!accepted) return;
+      void supabase.rpc("clear_draft", { p_chat: chatId });
       setValue("");
       setEmojiOpen(false);
       setMentionOpen(false);
@@ -657,6 +728,42 @@ export function Composer({
               <Mic className="h-5 w-5" />
             </motion.button>
           )}
+        </div>
+      )}
+      {!secret && !recording && (
+        <div className="mt-1 flex items-center gap-2 px-1">
+          <button
+            type="button"
+            onClick={() => setScheduledAt((current) => current ? "" : localDateTimeInput(new Date(Date.now() + 60 * 60_000)))}
+            className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-luma-200"
+            aria-pressed={Boolean(scheduledAt)}
+          >
+            <CalendarClock className="h-3.5 w-3.5" />
+            {scheduledAt ? "Cancel scheduling" : "Schedule message"}
+          </button>
+          <button type="button" onClick={() => void toggleScheduled()} className="ms-auto text-[11px] text-slate-500 hover:text-slate-200">
+            {scheduledOpen ? "Hide scheduled" : "Scheduled messages"}
+          </button>
+          {scheduledAt && (
+            <input
+              aria-label="Scheduled send time"
+              type="datetime-local"
+              value={scheduledAt}
+              min={localDateTimeInput(new Date(Date.now() + 60_000))}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              className="field w-auto py-1 text-[11px]"
+            />
+          )}
+        </div>
+      )}
+      {scheduledOpen && !secret && (
+        <div className="mt-2 space-y-1 rounded-xl border border-white/10 bg-black/20 p-2">
+          {!scheduledItems.length ? <p className="text-[11px] text-slate-500">No scheduled messages</p> : scheduledItems.map((item) => (
+            <div key={item.id} className="flex items-center gap-2 text-[11px]">
+              <span className="min-w-0 flex-1 truncate text-slate-300">{item.body || "Attachment"} · {new Date(item.scheduled_at).toLocaleString()}</span>
+              <button className="text-rose-300" onClick={() => void cancelScheduled(item.id)}>Cancel</button>
+            </div>
+          ))}
         </div>
       )}
     </div>
