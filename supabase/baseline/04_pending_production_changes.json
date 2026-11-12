@@ -36,7 +36,13 @@
   },
   "generated_at": "2026-11-12",
   "grants": {
-    "poll_vote_counts:authenticated:MAINTAIN,REFERENCES,SELECT,TRIGGER,TRUNCATE": "20261110150000_reconcile_with_production.sql revokes TRUNCATE/REFERENCES/TRIGGER/MAINTAIN from authenticated, keeping SELECT"
+    "poll_vote_counts:authenticated:MAINTAIN,REFERENCES,SELECT,TRIGGER,TRUNCATE": "20261110150000_reconcile_with_production.sql revokes TRUNCATE/REFERENCES/TRIGGER/MAINTAIN from authenticated, keeping SELECT",
+    "bots:authenticated:DELETE,SELECT": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds least-privilege authenticated grants",
+    "chat_audit_log:authenticated:SELECT": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds least-privilege authenticated grants",
+    "link_previews:authenticated:SELECT": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds least-privilege authenticated grants",
+    "message_drafts:authenticated:DELETE,SELECT": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds least-privilege authenticated grants",
+    "scheduled_messages:authenticated:SELECT": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds least-privilege authenticated grants",
+    "user_sessions:authenticated:DELETE,SELECT": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds least-privilege authenticated grants"
   },
   "tables": {
     "bot_api_logs": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds bot API audit",
