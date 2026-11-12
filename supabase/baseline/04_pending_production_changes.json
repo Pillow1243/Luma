@@ -2,15 +2,50 @@
   "_comment": "Differences from production that exist only because a committed migration has not been deployed there yet. Every entry names the migration that closes it; tests/db/parity.mjs tolerates exactly these and fails on anything else. Delete an entry right after applying the migration, so the file always reflects reality.",
   "_policies_note": "Policy expressions cannot be fingerprinted across Postgres versions; tests/db/security.mjs asserts their behaviour instead.",
   "functions": {
+    "audit_participant_changes()": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds membership audit trigger",
+    "cancel_scheduled_message(p_id uuid)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds scheduled-message cancellation",
     "cleanup_push_log()": "20261110180000_push_log.sql (retention job for push_log)",
+    "cleanup_v4_retention()": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds v4 retention cleanup",
+    "clear_draft(p_chat uuid)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds draft sync",
+    "create_bot(p_name text, p_username text, p_description text, p_webhook_url text, p_webhook_secret text)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds bot platform",
+    "create_bot_token(p_bot uuid, p_scopes text[])": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds bot platform",
+    "export_my_data()": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds data export",
+    "get_chat_analytics(p_chat uuid)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds channel analytics",
+    "get_draft(p_chat uuid)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds draft sync",
+    "heartbeat_session(p_id uuid)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds device sessions",
+    "list_chat_audit(p_chat uuid, p_limit integer)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds audit log read",
+    "list_my_bot_tokens(p_bot uuid)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds bot platform",
+    "list_my_sessions()": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds device sessions",
+    "list_scheduled_messages(p_chat uuid)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds scheduled messages",
+    "log_chat_audit(p_chat uuid, p_actor uuid, p_action text, p_target uuid, p_details jsonb)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds audit log write",
+    "messages_guardian()": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds slow-mode enforcement",
+    "profiles_privacy_guard()": "20261112000000_luma_v4_privacy_scheduling_bots.sql extends privacy guard to new fields",
+    "publish_scheduled_messages()": "20261112000000_luma_v4_privacy_scheduling_bots.sql promotes due scheduled messages",
     "redeem_invite(invite_token uuid)": "20261110190000_fix_redeem_invite_uses.sql stops a re-opened invite link consuming a use without granting membership",
-    "register_push_subscription(p_endpoint text, p_p256dh text, p_auth text)": "20261110160000_harden_push_registration.sql stops an endpoint being moved to another account (P0 takeover fix)"
+    "register_push_subscription(p_endpoint text, p_p256dh text, p_auth text)": "20261110160000_harden_push_registration.sql stops an endpoint being moved to another account (P0 takeover fix)",
+    "register_session(p_device_name text, p_user_agent text)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds device sessions",
+    "revoke_bot_token(p_token_id uuid)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds bot platform",
+    "revoke_session(p_id uuid)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds device sessions",
+    "save_draft(p_chat uuid, p_body text, p_reply_to uuid)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds draft sync",
+    "schedule_message(p_chat uuid, p_body text, p_reply_to uuid, p_media_path text, p_media_name text, p_media_type text, p_mentions uuid[], p_scheduled_at timestamptz)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds scheduled messages",
+    "search_messages_global(p_term text, p_limit integer, p_offset integer, p_chat uuid, p_media_only boolean, p_from_me boolean)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds global search",
+    "set_member_limit(p_chat uuid, p_limit integer)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds member limits",
+    "set_slow_mode(p_chat uuid, p_seconds integer)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds slow mode",
+    "verify_bot_token(p_token text)": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds bot token verification (service_role only)"
   },
-  "generated_at": "2026-11-10",
+  "generated_at": "2026-11-12",
   "grants": {
     "poll_vote_counts:authenticated:MAINTAIN,REFERENCES,SELECT,TRIGGER,TRUNCATE": "20261110150000_reconcile_with_production.sql revokes TRUNCATE/REFERENCES/TRIGGER/MAINTAIN from authenticated, keeping SELECT"
   },
   "tables": {
-    "push_log": "20261110180000_push_log.sql adds push dedup/rate-limit storage for send-push"
+    "bot_api_logs": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds bot API audit",
+    "bot_tokens": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds bot platform",
+    "bots": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds bot platform",
+    "chat_audit_log": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds audit log",
+    "link_previews": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds link-preview cache",
+    "message_drafts": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds draft sync",
+    "push_log": "20261110180000_push_log.sql adds push dedup/rate-limit storage for send-push",
+    "scheduled_messages": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds scheduled messages",
+    "user_sessions": "20261112000000_luma_v4_privacy_scheduling_bots.sql adds device sessions"
   }
 }

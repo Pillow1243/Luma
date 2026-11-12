@@ -885,7 +885,10 @@ export function chatAvatarProfile(
  */
 export async function triggerPushNotification(chatId: string, messageId: string): Promise<void> {
   try {
-    await supabase.functions.invoke("send-push", { body: { chatId, messageId } });
+    await supabase.functions.invoke("send-push", {
+      body: { chatId, messageId },
+      headers: { "X-Luma-Contract": "v2" },
+    });
   } catch {
     // Best-effort — never block message delivery
   }
@@ -952,14 +955,20 @@ export async function unregisterWebPush(userId: string): Promise<void> {
 }
 
 export async function deleteMyAccount(password: string): Promise<void> {
-  const { data, error } = await supabase.functions.invoke<{ ok?: boolean; error?: string }>(
-    "account-delete",
-    {
-      body: { password, confirmation: "DELETE" },
-    }
-  );
+  const { data, error } = await supabase.functions.invoke<{
+    ok?: boolean;
+    error?: { code?: string; message?: string } | string;
+    contract?: string;
+  }>("account-delete", {
+    body: { password, confirmation: "DELETE" },
+    headers: { "X-Luma-Contract": "v2" },
+  });
   if (error) throw error;
-  if (data && data.error) throw new Error(data.error);
+  if (data?.error) {
+    const message = typeof data.error === "string" ? data.error : data.error.message;
+    throw new Error(message || "Account deletion failed");
+  }
+  if (data && data.ok !== true) throw new Error("Account deletion did not complete");
 }
 
 export async function fetchSystemHealth(): Promise<{
