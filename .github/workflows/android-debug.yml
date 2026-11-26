@@ -44,7 +44,7 @@ jobs:
           mkdir -p ../release
           cp app/build/outputs/apk/debug/app-debug.apk ../release/luma-2.1.0-debug.apk
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: luma-2.1.0-debug
           path: release/luma-2.1.0-debug.apk
